@@ -2,6 +2,12 @@
 
 import asyncio
 import uvicorn
+import sys
+import os
+
+# Add the project root to the Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from app.database import database, metadata, engine
 from app.models import users, orders, trades, merkle_roots, ids_alerts, incidents, blocklist
 from app.security import get_password_hash

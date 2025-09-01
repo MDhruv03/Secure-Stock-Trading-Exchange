@@ -23,6 +23,7 @@ orders = Table(
     Column("stock", String), # Renamed from asset
     Column("qty", Integer), # Renamed from amount, changed to Integer
     Column("side", String), # Renamed from type
+    Column("price", Float), # Added
     Column("ciphertext", String), # Added
     Column("nonce", String), # Added
     Column("signature", String), # Added
