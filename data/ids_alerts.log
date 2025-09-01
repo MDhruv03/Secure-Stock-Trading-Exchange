@@ -1,0 +1,3 @@
+IDS Alert: SQL Injection Attempt from 192.168.1.10
+IDS Alert: Potential Replay Attack from 192.168.1.12
+IDS Alert: Potential Brute-Force Attack from 192.168.1.15

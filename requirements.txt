@@ -1,0 +1,11 @@
+pycryptodome
+requests
+phe
+fastapi
+uvicorn
+jinja2
+sqlalchemy
+databases[sqlite]
+passlib[bcrypt]
+python-jose[cryptography]
+matplotlib
