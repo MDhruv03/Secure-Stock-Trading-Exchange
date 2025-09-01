@@ -5,9 +5,18 @@ from app.database import database
 from app.models import ids_alerts, incidents, merkle_roots
 from app.security import get_current_user
 from typing import Optional
+from app.utils.sse import SearchableSymmetricEncryption
+from app.crypto.merkle import MerkleTree
+import os
 
 router = APIRouter()
 templates = Jinja2Templates(directory="frontend/templates")
+
+sse_key = os.urandom(16) # This should be a consistent key
+sse = SearchableSymmetricEncryption(sse_key)
+
+trades_log = [] # This should be a consistent list
+merkle_tree = MerkleTree(trades_log)
 
 @router.get("/logs", response_class=HTMLResponse)
 async def get_logs_page(request: Request, current_user: dict = Depends(get_current_user)):
@@ -37,3 +46,11 @@ async def get_merkle_logs_page(request: Request, current_user: dict = Depends(ge
         "current_user": current_user,
         "merkle_roots": roots
     })
+
+@router.get("/merkle_root")
+def get_merkle_root():
+    return {"merkle_root": merkle_tree.get_root()}
+
+@router.get("/search")
+def search_trades(keyword: str):
+    return {"results": sse.search(keyword)}

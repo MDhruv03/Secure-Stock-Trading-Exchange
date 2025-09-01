@@ -53,13 +53,7 @@ async def shutdown():
 
 
 
-# Paillier setup
-paillier_public_key, paillier_private_key = generate_paillier_keypair()
-encrypted_prices = []
 
-# SSE setup
-sse_key = os.urandom(16)
-sse = SearchableSymmetricEncryption(sse_key)
 
 
 
