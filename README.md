@@ -72,13 +72,6 @@ Design and implement a secure trading exchange where:
 
 ---
 
-## 💻 Hardware Requirements
-- CPU: Intel i5 / Ryzen 5 or higher
-- RAM: 8 GB minimum
-- Storage: 50 GB
-- Network: NAT / Host-only
-
----
 
 ## 🖥️ Software Requirements
 - **Virtualization:** VMware / VirtualBox  
@@ -111,7 +104,7 @@ To set up and run the Secure Trading Exchange, follow these steps:
 
 1.  **Clone the repository:**
     ```bash
-    git clone <repository_url>
+    git clone https://github.com/MDhruv03/Secure-Stock-Trading-Exchange
     cd "Secure Trading Exchange"
     ```
 
@@ -141,21 +134,6 @@ To set up and run the Secure Trading Exchange, follow these steps:
     ```
 
 6.  **Access the application:**
-    Open your web browser and navigate to `http://127.0.0.1:8000`.
-
----
-
-## 🗺️ Roadmap (For Agentic AI)
-This project is being developed following the detailed MVP Build Map (`MAP.md`), which outlines the project layout, database schema, backend functions, frontend pages, simulation flows, and observability. The project structure has been refactored to align with this map.
-
-Refer to `MAP.md` for a comprehensive understanding of the development plan and detailed implementation steps.
-
----
-
-## 📊 Why This Project Stands Out
-- **Unique Blend**: Cryptography + SOC defense + Fintech context  
-- **Hands-On**: Combines Red vs Blue Team practice with privacy-preserving computation  
-- **Research-Ready**: Demonstrates cutting-edge crypto in financial security  
-- **Industry-Aligned**: Mimics real SOC workflows for fintech systems  
+    Open your web browser and navigate to `http://localhost:8000`.
 
 ---
