@@ -195,7 +195,7 @@ tail_eve_json(path) -> generator[dict] (yield events)
 
 IDS-lite fallback:
 
-scan_request_for_ioc(req) -> list[match] (regex for ' or 1=1, union select, etc.)
+scan_request_for_ioc(req) -> list[match] (regex for ' or 1=1, union select, etc.')
 
 rate_limit_key(ip, username) -> bool (flag brute-force attempts)
 
@@ -215,7 +215,7 @@ blocked_middleware(request): deny request if client.host in blocklist
 
 vwap_png(output_path) using Matplotlib → save single-plot PNG (no seaborn).
 
-3.6 Routes (app/routes/*.py) — Endpoints
+3.6 Routes (app/routes/\*.py) — Endpoints
 
 Auth
 
@@ -433,7 +433,7 @@ python scripts/manage.py init_db
 python scripts/manage.py seed
 python scripts/manage.py start_ids   # or: python scripts/manage.py ids_lite
 uvicorn app.main:app --reload
-# Open: http://127.0.0.1:8000
+# Open: http://localhost:8000
 
 
 Demo flow: Login → Trade (place order) → Sim (run SQLi) → Logs (see alert & incident) → Dashboard status pill flips → Verify Merkle for your order.
@@ -472,7 +472,7 @@ Build Jinja templates w/ Tailwind; add polling JS on dashboard/logs/sim pages.
 
 Implement IDS service (Suricata tail or IDS-lite) + incident automation + middleware block.
 
-Implement Red Team subprocess calls in /sim/* handlers.
+Implement Red Team subprocess calls in /sim\* handlers.
 
 Ship charts endpoint producing PNG images (Matplotlib, one plot per figure).
 

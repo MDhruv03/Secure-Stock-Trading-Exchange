@@ -10,7 +10,7 @@ router = APIRouter()
 @router.post("/register", response_model=UserResponse)
 async def register_user(user: UserCreate):
     hashed_password = get_password_hash(user.password)
-    query = users.insert().values(username=user.username, password_hash=hashed_password, public_key=user.public_key)
+    query = users.insert().values(username=user.username, password_hash=hashed_password, public_key=user.public_key, private_key=user.private_key)
     last_record_id = await database.execute(query)
     return {**user.dict(), "id": last_record_id, "role": "customer", "balance": 10000.0}
 

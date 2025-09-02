@@ -6,6 +6,7 @@ class UserCreate(BaseModel):
     username: str
     password: str
     public_key: str
+    private_key: str
 
 class UserLogin(BaseModel):
     username: str
