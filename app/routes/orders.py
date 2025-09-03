@@ -1,8 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+import logging
+
+logger = logging.getLogger(__name__)
+
 from app.database import database
-from app.models import orders, trades
-from app.security import get_current_user
-from app.schemas import UserResponse, OrderResponse, SignedOrder
+from app.models import orders, trades, users
+from app.security import get_current_user, get_current_admin_user
+from app.schemas import UserResponse, OrderResponse, SignedOrder, TradeResponse
 from app.crypto.signatures import verify as verify_signature
 from app.crypto.encryption import encrypt_order, decrypt_order
 from app.crypto.merkle import MerkleTree
@@ -23,8 +27,32 @@ matching_engine = MatchingEngine(order_book)
 trades_log = [] # This should ideally be managed globally or via DB
 merkle_tree = MerkleTree(trades_log)
 
+
+
+@router.get("/admin/users", response_model=List[UserResponse])
+async def get_all_users(current_user: UserResponse = Depends(get_current_admin_user)):
+    logger.info(f"Admin user '{current_user['username']}' accessed all users.")
+    query = users.select()
+    all_users = await database.fetch_all(query)
+    return all_users
+
+@router.get("/admin/orders", response_model=List[OrderResponse])
+async def get_all_orders(current_user: UserResponse = Depends(get_current_admin_user)):
+    logger.info(f"Admin user '{current_user['username']}' accessed all orders.")
+    query = orders.select()
+    all_orders = await database.fetch_all(query)
+    return all_orders
+
+@router.get("/admin/trades", response_model=List[TradeResponse])
+async def get_all_trades(current_user: UserResponse = Depends(get_current_admin_user)):
+    logger.info(f"Admin user '{current_user['username']}' accessed all trades.")
+    query = trades.select()
+    all_trades = await database.fetch_all(query)
+    return all_trades
+
 @router.post("/order")
 async def place_order(signed_order: SignedOrder, current_user: UserResponse = Depends(get_current_user)):
+    logger.info(f"User '{current_user['username']}' attempting to place order: {signed_order.order.dict()}")
     # In a real app, we would look up the public key based on the user_id
     # For now, we accept the public key in the request
     # Generate a random AES key for order encryption
@@ -69,6 +97,7 @@ async def place_order(signed_order: SignedOrder, current_user: UserResponse = De
     # Save order to database
     query = orders.insert().values(**order_data_for_db)
     await database.execute(query)
+    logger.info(f"Order {signed_order.order.id} placed by {current_user['username']}.")
 
     trades = matching_engine.match_order(order_data_for_db) # Pass order_data_for_db to matching engine
     
@@ -81,6 +110,7 @@ async def place_order(signed_order: SignedOrder, current_user: UserResponse = De
         # Save trade to database
         query = trades.insert().values(**trade)
         await database.execute(query)
+        logger.info(f"Trade {trade['id']} matched for order {signed_order.order.id}.")
 
         # Add to SSE index (commented out as SSE is managed in main.py)
         # keywords = [order_data_for_db.get('user_id'), order_data_for_db.get('stock'), order_data_for_db.get('side')]

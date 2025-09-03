@@ -5,6 +5,11 @@ import uvicorn
 import json
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, Request, Depends, status, APIRouter
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
 from app.routes.auth import router as auth_router
 from app.routes.orders import router as orders_router
 from app.routes.analytics import router as analytics_router
@@ -15,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
+import asyncio
 
 # Add the project root to the Python path
 
@@ -29,6 +35,7 @@ from app.database import database, metadata, engine
 from app.models import users, orders, trades
 from app.security import get_password_hash, verify_password, create_access_token, get_current_user
 from app.schemas import UserCreate, UserResponse, Token, OrderResponse, TradeResponse, Order, SignedOrder
+from app.routes.orders import order_book # Import the order_book instance
 
 app = FastAPI()
 app.include_router(auth_router)
@@ -42,10 +49,16 @@ app.include_router(vulns_router)
 app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
 templates = Jinja2Templates(directory="frontend/templates")
 
+async def periodic_market_simulation():
+    while True:
+        order_book.simulate_market_activity()
+        await asyncio.sleep(5) # Simulate market activity every 5 seconds
+
 @app.on_event("startup")
 async def startup():
     await database.connect()
     metadata.create_all(engine)
+    asyncio.create_task(periodic_market_simulation())
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -57,9 +70,13 @@ async def shutdown():
 
 
 
+
+
 @app.get("/")
 def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
+
+
 
 
 

@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from app.database import database
 from app.models import ids_alerts, incidents, merkle_roots
-from app.security import get_current_user
+from app.security import get_current_user, get_current_admin_user
 from typing import Optional
 from app.utils.sse import SearchableSymmetricEncryption
 from app.crypto.merkle import MerkleTree
@@ -19,7 +19,7 @@ trades_log = [] # This should be a consistent list
 merkle_tree = MerkleTree(trades_log)
 
 @router.get("/logs", response_class=HTMLResponse)
-async def get_logs_page(request: Request, current_user: dict = Depends(get_current_user)):
+async def get_logs_page(request: Request, current_user: dict = Depends(get_current_admin_user)):
     # Fetch IDS alerts
     alerts_query = ids_alerts.select().order_by(ids_alerts.c.created_at.desc()).limit(100)
     alerts = await database.fetch_all(alerts_query)
@@ -36,7 +36,7 @@ async def get_logs_page(request: Request, current_user: dict = Depends(get_curre
     })
 
 @router.get("/logs/merkle", response_class=HTMLResponse)
-async def get_merkle_logs_page(request: Request, current_user: dict = Depends(get_current_user)):
+async def get_merkle_logs_page(request: Request, current_user: dict = Depends(get_current_admin_user)):
     # Fetch Merkle roots
     merkle_roots_query = merkle_roots.select().order_by(merkle_roots.c.created_at.desc()).limit(100)
     roots = await database.fetch_all(merkle_roots_query)

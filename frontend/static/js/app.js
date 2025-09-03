@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const showRegisterButton = document.getElementById('show-register');
     const messageArea = document.getElementById('message-area');
 
-    const API_BASE_URL = 'http://localhost:8000';
+    const API_BASE_URL = 'http://127.0.0.1:8000';
 
     let currentUser = null;
     let accessToken = null;
@@ -64,7 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
         clearMessage();
     });
 
-    showRegisterButton.addEventListener('click', () => {
+      showRegisterButton.addEventListener('click', () => {
         registerForm.classList.remove('hidden');
         loginForm.classList.add('hidden');
         showRegisterButton.classList.add('bg-indigo-600', 'hover:bg-indigo-700', 'text-white');
@@ -74,7 +74,22 @@ document.addEventListener('DOMContentLoaded', () => {
         clearMessage();
     });
 
-    // --- Initial Setup ---
+    document.getElementById('analytics-link').addEventListener('click', (e) => {
+        e.preventDefault();
+        fetchAndDisplayPage('/analytics');
+    });
+
+    document.getElementById('logs-link').addEventListener('click', (e) => {
+        e.preventDefault();
+        fetchAndDisplayPage('/logs');
+    });
+
+    document.getElementById('sim-link').addEventListener('click', (e) => {
+        e.preventDefault();
+        fetchAndDisplayPage('/sim');
+    });
+
+    // --- Initial Setup ---""
     checkAuthStatus();
     fetchOrderBook();
     fetchSystemStatus();
@@ -140,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(`${API_BASE_URL}/register`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password, public_key: publicKey })
+                body: JSON.stringify({ username, password, public_key: publicKey, private_key: privateKey })
             });
             const data = await response.json();
 
@@ -531,5 +546,90 @@ document.addEventListener('DOMContentLoaded', () => {
                 fetchAllTrades();
             }
         }
-    }, 5000);
+    }, 60000);
+
+    async function fetchAndDisplayPage(url) {
+        console.log('Fetching page:', url);
+        if (!accessToken) {
+            showMessage('Please log in to access this page.', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}${url}`, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+
+            if (response.ok) {
+                const html = await response.text();
+                document.getElementById('admin-content').innerHTML = html;
+                document.getElementById('admin-content').classList.remove('hidden');
+                document.getElementById('main-dashboard').classList.add('hidden');
+
+                if (url === '/analytics') {
+                    fetchVwapChart();
+                } else if (url === '/sim') {
+                    setupSimulations();
+                }
+            } else {
+                showMessage('Failed to load page.', 'error');
+            }
+        } catch (error) {
+            console.error('Error fetching page:', error);
+            showMessage('An error occurred while fetching the page.', 'error');
+        }
+    }
+
+    function setupSimulations() {
+        const outputDiv = document.getElementById('simulation-output');
+
+        async function runSimulation(endpoint) {
+            outputDiv.textContent = `Running simulation for ${endpoint}...\n`;
+            try {
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                const data = await response.json();
+                outputDiv.textContent += JSON.stringify(data, null, 2) + '\n';
+            } catch (error) {
+                outputDiv.textContent += `Error: ${error.message}\n`;
+                console.error('Simulation error:', error);
+            }
+        }
+
+        document.getElementById('sqlmap-sim-btn').addEventListener('click', () => runSimulation('/sim/sqlmap'));
+        document.getElementById('bruteforce-sim-btn').addEventListener('click', () => runSimulation('/sim/bruteforce'));
+        document.getElementById('replay-sim-btn').addEventListener('click', () => runSimulation('/sim/replay'));
+        document.getElementById('mitm-sim-btn').addEventListener('click', () => runSimulation('/sim/mitm'));
+    }
+
+    async function fetchVwapChart() {
+        console.log('Fetching VWAP chart...');
+        const vwapChart = document.getElementById('vwap-chart');
+        console.log('vwap-chart element:', vwapChart);
+        if (!vwapChart) {
+            console.error('Could not find vwap-chart element');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/analytics/vwap.png`, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+
+            if (response.ok) {
+                const blob = await response.blob();
+                const imageUrl = URL.createObjectURL(blob);
+                document.getElementById('vwap-chart').src = imageUrl;
+            } else {
+                console.error('Failed to fetch VWAP chart');
+            }
+        } catch (error) {
+            console.error('Error fetching VWAP chart:', error);
+        }
+    }
 });

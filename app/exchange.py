@@ -1,5 +1,7 @@
 
 from collections import defaultdict
+import random
+import uuid
 
 class OrderBook:
     def __init__(self):
@@ -13,6 +15,28 @@ class OrderBook:
         else:
             self.sell_orders[order['asset']].append(order)
             self.sell_orders[order['asset']].sort(key=lambda x: x['price'])
+
+    def simulate_market_activity(self):
+        assets = ["BTC", "ETH", "XRP"]
+        for _ in range(random.randint(1, 3)): # Add 1-3 new orders per simulation
+            asset = random.choice(assets)
+            order_type = random.choice(["buy", "sell"])
+            amount = round(random.uniform(0.01, 5.0), 2)
+            price = round(random.uniform(1000.0, 50000.0), 2)
+
+            new_order = {
+                "id": str(uuid.uuid4()),
+                "user_id": "simulated_user", # Placeholder user
+                "stock": asset,
+                "asset": asset, # For consistency with frontend
+                "qty": amount,
+                "amount": amount, # For consistency with frontend
+                "side": order_type,
+                "type": order_type, # For consistency with frontend
+                "price": price,
+                "timestamp": str(random.randint(1, 1000000)) # Placeholder
+            }
+            self.add_order(new_order)
 
 class MatchingEngine:
     def __init__(self, order_book):

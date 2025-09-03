@@ -2,11 +2,14 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 
+from typing import Optional
+
 class UserCreate(BaseModel):
     username: str
     password: str
     public_key: str
-    private_key: str
+    private_key: Optional[str] = None
+    role: Optional[str] = "customer"
 
 class UserLogin(BaseModel):
     username: str

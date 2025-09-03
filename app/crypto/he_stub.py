@@ -16,3 +16,17 @@ def he_vwap_stub(prices, qtys) -> float:
     if total_qty == 0:
         return 0.0
     return total_value / total_qty
+
+def he_encrypt(plaintext):
+    """Simulates homomorphic encryption. In a real system, this would use an HE library.
+    For now, returns the plaintext as is.
+    """
+    print(f"[HE Stub] Encrypting: {plaintext}")
+    return plaintext # Placeholder for actual HE encryption
+
+def he_decrypt(ciphertext):
+    """Simulates homomorphic decryption. In a real system, this would use an HE library.
+    For now, returns the ciphertext as is.
+    """
+    print(f"[HE Stub] Decrypting: {ciphertext}")
+    return ciphertext # Placeholder for actual HE decryption
