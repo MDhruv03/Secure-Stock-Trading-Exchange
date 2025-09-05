@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terminal Trading Exchange</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'mono': ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        'terminal': {
+                            'bg': '#0a0a0f',
+                            'surface': '#141420',
+                            'border': '#1a1a2e',
+                            'accent': '#00ff88',
+                            'text': '#e2e8f0',
+                            'muted': '#64748b',
+                            'danger': '#ff4757',
+                            'warning': '#ffa726'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-black text-slate-200 font-mono min-h-screen">
+    <!-- Login/Register View -->
+    <div id="logged-out-view" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-black to-gray-800">
+        <div class="w-full max-w-md">
+            <div class="bg-gray-900 border border-gray-700 rounded-lg p-8 backdrop-blur-sm shadow-2xl">
+                <!-- Terminal Header -->
+                <div class="text-center mb-8">
+                    <div class="flex items-center justify-center mb-4">
+                        <div class="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
+                        <div class="w-3 h-3 bg-yellow-500 rounded-full mr-2"></div>
+                        <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+                    </div>
+                    <h2 class="text-2xl font-bold text-green-400 tracking-wider">TERMINAL_EXCHANGE</h2>
+                    <p class="text-sm text-gray-400 mt-2">$ sudo access --secure-trading</p>
+                </div>
+
+                <div id="message-area-logged-out" class="mb-4 text-center text-sm font-medium"></div>
+                
+                <!-- Tab Buttons -->
+                <div class="flex mb-6 bg-gray-800 rounded-lg p-1">
+                    <button id="show-login" class="flex-1 py-2 px-4 text-sm font-medium rounded-md bg-green-500 text-black transition-all duration-200">
+                        login
+                    </button>
+                    <button id="show-register" class="flex-1 py-2 px-4 text-sm font-medium rounded-md text-gray-400 hover:text-green-400 transition-all duration-200">
+                        register
+                    </button>
+                </div>
+
+                <!-- Login Form -->
+                <form id="login-form" class="space-y-4">
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">USERNAME</label>
+                        <input id="login-username" type="text" required 
+                               class="w-full bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-sm text-green-400 placeholder-gray-500 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-colors"
+                               placeholder="enter username...">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">PASSWORD</label>
+                        <input id="login-password" type="password" required 
+                               class="w-full bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-sm text-green-400 placeholder-gray-500 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-colors"
+                               placeholder="enter password...">
+                    </div>
+                    <button type="submit" class="w-full bg-green-500 hover:bg-green-400 text-black font-semibold py-2 px-4 rounded-md transition-all duration-200 transform hover:scale-105">
+                        $ execute login
+                    </button>
+                </form>
+
+                <!-- Register Form -->
+                <form id="register-form" class="space-y-4 hidden">
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">USERNAME</label>
+                        <input id="register-username" type="text" required 
+                               class="w-full bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-sm text-green-400 placeholder-gray-500 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-colors"
+                               placeholder="choose username...">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">PASSWORD</label>
+                        <input id="register-password" type="password" required 
+                               class="w-full bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-sm text-green-400 placeholder-gray-500 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-colors"
+                               placeholder="create password...">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">CONFIRM PASSWORD</label>
+                        <input id="register-confirm-password" type="password" required 
+                               class="w-full bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-sm text-green-400 placeholder-gray-500 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-colors"
+                               placeholder="confirm password...">
+                    </div>
+                    <button type="submit" class="w-full bg-green-500 hover:bg-green-400 text-black font-semibold py-2 px-4 rounded-md transition-all duration-200 transform hover:scale-105">
+                        $ create account
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Application View -->
+    <div id="loggedIn-view" class="hidden h-screen bg-black">
+        <!-- Header -->
+        <header class="bg-gray-900 border-b border-gray-700 px-6 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center">
+                        <div class="w-2 h-2 bg-red-500 rounded-full mr-1"></div>
+                        <div class="w-2 h-2 bg-yellow-500 rounded-full mr-1"></div>
+                        <div class="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                    </div>
+                    <h1 class="text-green-400 font-bold text-lg tracking-wider">TERMINAL_EXCHANGE</h1>
+                </div>
+                <div class="flex items-center space-x-4 text-sm">
+                    <span class="text-gray-400">user:</span>
+                    <span id="current-username" class="text-green-400 font-semibold"></span>
+                    <span class="text-gray-400">|</span>
+                    <span class="text-gray-400">role:</span>
+                    <span id="current-user-role" class="text-blue-400"></span>
+                    <span class="text-gray-400">|</span>
+                    <span class="text-gray-400">balance:</span>
+                    <span class="text-green-400">$<span id="current-user-balance"></span></span>
+                </div>
+            </div>
+        </header>
+
+        <div class="flex h-screen">
+            <!-- Sidebar Navigation -->
+            <aside class="w-16 bg-gray-900 border-r border-gray-700 flex flex-col items-center py-4 space-y-2">
+                <a href="#" id="home-link" class="group flex items-center justify-center w-10 h-10 text-gray-400 hover:text-green-400 hover:bg-gray-800 rounded-lg transition-all duration-200">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                    </svg>
+                </a>
+                <a href="/analytics" id="analytics-link" class="group flex items-center justify-center w-10 h-10 text-gray-400 hover:text-green-400 hover:bg-gray-800 rounded-lg transition-all duration-200">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                </a>
+                <a href="/logs" id="logs-link" class="group flex items-center justify-center w-10 h-10 text-gray-400 hover:text-green-400 hover:bg-gray-800 rounded-lg transition-all duration-200">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m3 8H5m14 0a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                </a>
+                <a href="/sim" id="sim-link" class="group flex items-center justify-center w-10 h-10 text-gray-400 hover:text-green-400 hover:bg-gray-800 rounded-lg transition-all duration-200">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </a>
+                
+                <!-- Logout at bottom -->
+                <div class="flex-1"></div>
+                <button id="logout-button" class="flex items-center justify-center w-10 h-10 text-gray-400 hover:text-red-400 hover:bg-gray-800 rounded-lg transition-all duration-200">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                    </svg>
+                </button>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="flex-1 overflow-hidden">
+                <div class="h-full overflow-y-auto p-6 bg-gradient-to-br from-gray-900 to-black">
+                    <div id="message-area-logged-in" class="mb-4 text-center text-sm font-medium"></div>
+                    
+                    <!-- Main Dashboard -->
+                    <div id="main-dashboard">
+                        <!-- Terminal Command Line Style Header -->
+                        <div class="mb-6 p-4 bg-gray-900 border border-gray-700 rounded-lg">
+                            <div class="flex items-center space-x-2">
+                                <span class="text-green-400">$</span>
+                                <span class="text-blue-400">trading-session</span>
+                                <span class="text-gray-400">--active</span>
+                                <div class="ml-auto flex items-center space-x-2">
+                                    <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                                    <span class="text-xs text-gray-400">LIVE</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- System Status & Order Form Grid -->
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+                            <!-- System Status -->
+                            <div class="bg-gray-900 border border-gray-700 rounded-lg p-6 hover:border-green-500/50 transition-colors duration-300">
+                                <h3 class="text-lg font-semibold text-green-400 mb-4 flex items-center">
+                                    <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                    SYSTEM_STATUS
+                                </h3>
+                                <div class="space-y-3 text-sm">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-gray-400">merkle_root:</span>
+                                        <span id="merkle-root" class="font-mono text-xs text-green-400 break-all">loading...</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-gray-400">vwap:</span>
+                                        <span id="vwap" class="font-semibold text-green-400">--</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-gray-400">status:</span>
+                                        <span class="text-green-400 flex items-center">
+                                            <div class="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
+                                            ONLINE
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Place Order -->
+                            <div class="lg:col-span-2 bg-gray-900 border border-gray-700 rounded-lg p-6 hover:border-green-500/50 transition-colors duration-300">
+                                <h3 class="text-lg font-semibold text-green-400 mb-4 flex items-center">
+                                    <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                                    </svg>
+                                    PLACE_ORDER
+                                </h3>
+                                <form id="order-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">ASSET</label>
+                                        <input type="text" id="asset" value="BTC" required 
+                                               class="w-full bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-sm text-green-400 focus:outline-none focus:border-green-500 transition-colors">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">TYPE</label>
+                                        <select id="type" class="w-full bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-sm text-green-400 focus:outline-none focus:border-green-500 transition-colors">
+                                            <option value="buy">BUY</option>
+                                            <option value="sell">SELL</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">AMOUNT</label>
+                                        <input type="number" id="amount" step="0.01" required 
+                                               class="w-full bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-sm text-green-400 focus:outline-none focus:border-green-500 transition-colors">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">PRICE</label>
+                                        <input type="number" id="price" step="0.01" required 
+                                               class="w-full bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-sm text-green-400 focus:outline-none focus:border-green-500 transition-colors">
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <button type="submit" class="w-full bg-green-500 hover:bg-green-400 text-black font-semibold py-2 px-4 rounded-md transition-all duration-200 transform hover:scale-105">
+                                            $ execute order
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+
+                        <!-- Order Book & Search -->
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <!-- Order Book -->
+                            <div class="bg-gray-900 border border-gray-700 rounded-lg p-6 hover:border-green-500/50 transition-colors duration-300">
+                                <h3 class="text-lg font-semibold text-green-400 mb-4 flex items-center">
+                                    <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                                    </svg>
+                                    ORDER_BOOK
+                                </h3>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <h4 class="text-sm font-medium text-red-400 mb-2 pb-2 border-b border-gray-700">SELL_ORDERS</h4>
+                                        <div id="sell-orders" class="space-y-1 text-xs text-gray-400 max-h-40 overflow-y-auto">
+                                            <div class="text-center py-4 text-gray-500">Loading...</div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h4 class="text-sm font-medium text-green-400 mb-2 pb-2 border-b border-gray-700">BUY_ORDERS</h4>
+                                        <div id="buy-orders" class="space-y-1 text-xs text-gray-400 max-h-40 overflow-y-auto">
+                                            <div class="text-center py-4 text-gray-500">Loading...</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Search Trades -->
+                            <div class="bg-gray-900 border border-gray-700 rounded-lg p-6 hover:border-green-500/50 transition-colors duration-300">
+                                <h3 class="text-lg font-semibold text-green-400 mb-4 flex items-center">
+                                    <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                                    </svg>
+                                    SEARCH_TRADES
+                                </h3>
+                                <form id="search-form" class="mb-4">
+                                    <div class="flex space-x-2">
+                                        <input type="text" id="search-keyword" required placeholder="search keyword..." 
+                                               class="flex-1 bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-sm text-green-400 placeholder-gray-500 focus:outline-none focus:border-green-500 transition-colors">
+                                        <button type="submit" class="px-4 py-2 bg-green-500 hover:bg-green-400 text-black font-semibold rounded-md transition-colors">
+                                            SEARCH
+                                        </button>
+                                    </div>
+                                </form>
+                                <div id="search-results" class="space-y-2 text-xs text-gray-400 max-h-40 overflow-y-auto">
+                                    <div class="text-center py-4 text-gray-500">Enter search term...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Admin Content (Hidden by default) -->
+                    <div id="admin-content" class="hidden">
+                        <!-- Dynamic admin content will be loaded here -->
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Analytics Page Template -->
+    <template id="analytics-template">
+        <div class="space-y-6">
+            <!-- Header -->
+            <div class="flex items-center justify-between">
+                <h1 class="text-2xl font-bold text-green-400 flex items-center">
+                    <svg class="w-6 h-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                    ANALYTICS_DASHBOARD
+                </h1>
+                <button id="generate-data-btn" class="bg-blue-500 hover:bg-blue-400 text-black font-semibold py-2 px-4 rounded-md transition-colors">
+                    GENERATE_DATA
+                </button>
+            </div>
+
+            <!-- Charts Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- VWAP Chart -->
+                <div class="bg-gray-900 border border-gray-700 rounded-lg p-6 hover:border-green-500/50 transition-colors">
+                    <h2 class="text-lg font-semibold text-green-400 mb-4">VWAP_CHART</h2>
+                    <div class="relative h-64 bg-gray-800 rounded-lg overflow-hidden">
+                        <canvas id="vwap-chart"></canvas>
+                        <div id="vwap-loading" class="absolute inset-0 bg-gray-900/80 flex items-center justify-center text-green-400">
+                            Loading...
+                        </div>
+                    </div>
+                    <p class="mt-2 text-xs text-gray-400">Volume Weighted Average Price of all trades</p>
+                </div>
+
+                <!-- Order Distribution Chart -->
+                <div class="bg-gray-900 border border-gray-700 rounded-lg p-6 hover:border-green-500/50 transition-colors">
+                    <h2 class="text-lg font-semibold text-green-400 mb-4">ORDER_DISTRIBUTION</h2>
+                    <div class="relative h-64 bg-gray-800 rounded-lg overflow-hidden">
+                        <canvas id="order-distribution-chart"></canvas>
+                        <div id="order-distribution-loading" class="absolute inset-0 bg-gray-900/80 flex items-center justify-center text-green-400">
+                            Loading...
+                        </div>
+                    </div>
+                    <p class="mt-2 text-xs text-gray-400">Distribution of orders across different stocks</p>
+                </div>
+
+                <!-- Trade Volume Chart -->
+                <div class="bg-gray-900 border border-gray-700 rounded-lg p-6 hover:border-green-500/50 transition-colors">
+                    <h2 class="text-lg font-semibold text-green-400 mb-4">TRADE_VOLUME</h2>
+                    <div class="relative h-64 bg-gray-800 rounded-lg overflow-hidden">
+                        <canvas id="trade-volume-chart"></canvas>
+                        <div id="trade-volume-loading" class="absolute inset-0 bg-gray-900/80 flex items-center justify-center text-green-400">
+                            Loading...
+                        </div>
+                    </div>
+                    <p class="mt-2 text-xs text-gray-400">Number of trades executed over time</p>
+                </div>
+
+                <!-- User Activity Chart -->
+                <div class="bg-gray-900 border border-gray-700 rounded-lg p-6 hover:border-green-500/50 transition-colors">
+                    <h2 class="text-lg font-semibold text-green-400 mb-4">USER_ACTIVITY</h2>
+                    <div class="relative h-64 bg-gray-800 rounded-lg overflow-hidden">
+                        <canvas id="user-activity-chart"></canvas>
+                        <div id="user-activity-loading" class="absolute inset-0 bg-gray-900/80 flex items-center justify-center text-green-400">
+                            Loading...
+                        </div>
+                    </div>
+                    <p class="mt-2 text-xs text-gray-400">Number of registered users over time</p>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Tab switching logic
+            const showLoginBtn = document.getElementById('show-login');
+            const showRegisterBtn = document.getElementById('show-register');
+            const loginForm = document.getElementById('login-form');
+            const registerForm = document.getElementById('register-form');
+            
+            showLoginBtn.addEventListener('click', () => {
+                loginForm.classList.remove('hidden');
+                registerForm.classList.add('hidden');
+                showLoginBtn.classList.add('bg-green-500', 'text-black');
+                showLoginBtn.classList.remove('text-gray-400');
+                showRegisterBtn.classList.remove('bg-green-500', 'text-black');
+                showRegisterBtn.classList.add('text-gray-400');
+            });
+
+            showRegisterBtn.addEventListener('click', () => {
+                registerForm.classList.remove('hidden');
+                loginForm.classList.add('hidden');
+                showRegisterBtn.classList.add('bg-green-500', 'text-black');
+                showRegisterBtn.classList.remove('text-gray-400');
+                showLoginBtn.classList.remove('bg-green-500', 'text-black');
+                showLoginBtn.classList.add('text-gray-400');
+            });
+
+            // Demo functionality for the interface
+            const loggedOutView = document.getElementById('logged-out-view');
+            const loggedInView = document.getElementById('loggedIn-view');
+            const mainDashboard = document.getElementById('main-dashboard');
+            const adminContent = document.getElementById('admin-content');
+
+            // Demo login functionality
+            const loginFormEl = document.getElementById('login-form');
+            loginFormEl.addEventListener('submit', (e) => {
+                e.preventDefault();
+                // Simulate login
+                loggedOutView.classList.add('hidden');
+                loggedInView.classList.remove('hidden');
+                document.getElementById('current-username').textContent = 'demo_user';
+                document.getElementById('current-user-role').textContent = 'customer';
+                document.getElementById('current-user-balance').textContent = '10000.00';
+            });
+
+            // Demo register functionality
+            const registerFormEl = document.getElementById('register-form');
+            registerFormEl.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const messageArea = document.getElementById('message-area-logged-out');
+                messageArea.textContent = 'Registration successful! Please log in.';
+                messageArea.className = 'mb-4 text-center text-sm font-medium text-green-400';
+                showLoginBtn.click();
+            });
+
+            // Navigation functionality
+            document.getElementById('home-link').addEventListener('click', (e) => {
+                e.preventDefault();
+                mainDashboard.classList.remove('hidden');
+                adminContent.classList.add('hidden');
+            });
+
+            document.getElementById('analytics-link').addEventListener('click', (e) => {
+                e.preventDefault();
+                loadAnalytics();
+            });
+
+            document.getElementById('logs-link').addEventListener('click', (e) => {
+                e.preventDefault();
+                loadLogs();
+            });
+
+            document.getElementById('sim-link').addEventListener('click', (e) => {
+                e.preventDefault();
+                loadSimulation();
+            });
+
+            document.getElementById('logout-button').addEventListener('click', () => {
+                loggedInView.classList.add('hidden');
+                loggedOutView.classList.remove('hidden');
+            });
+
+            // Load analytics page
+            function loadAnalytics() {
+                const template = document.getElementById('analytics-template');
+                adminContent.innerHTML = template.innerHTML;
+                mainDashboard.classList.add('hidden');
+                adminContent.classList.remove('hidden');
+                initCharts();
+            }
+
+            // Load logs page
+            function loadLogs() {
+                adminContent.innerHTML = `
+                    <div class="space-y-6">
+                        <h1 class="text-2xl font-bold text-green-400 flex items-center">
+                            <svg class="w-6 h-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m3 8H5m14 0a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                            </svg>
+                            SYSTEM_LOGS
+                        </h1>
+
+                        <!-- IDS Alerts -->
+                        <div class="bg-gray-900 border border-gray-700 rounded-lg p-6 hover:border-green-500/50 transition-colors">
+                            <h2 class="text-lg font-semibold text-green-400 mb-4">IDS_ALERTS</h2>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr class="border-b border-gray-700">
+                                            <th class="text-left text-gray-400 py-2">ID</th>
+                                            <th class="text-left text-gray-400 py-2">TYPE</th>
+                                            <th class="text-left text-gray-400 py-2">DESCRIPTION</th>
+                                            <th class="text-left text-gray-400 py-2">SOURCE_IP</th>
+                                            <th class="text-left text-gray-400 py-2">TIMESTAMP</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="text-gray-300">
+                                        <tr class="border-b border-gray-800">
+                                            <td class="py-2 text-green-400">001</td>
+                                            <td class="py-2 text-yellow-400">BRUTE_FORCE</td>
+                                            <td class="py-2">Multiple failed login attempts detected</td>
+                                            <td class="py-2 font-mono">192.168.1.100</td>
+                                            <td class="py-2 text-gray-400">2024-01-15 10:30:42</td>
+                                        </tr>
+                                        <tr class="border-b border-gray-800">
+                                            <td class="py-2 text-green-400">002</td>
+                                            <td class="py-2 text-red-400">SQL_INJECTION</td>
+                                            <td class="py-2">Malicious SQL pattern in request</td>
+                                            <td class="py-2 font-mono">10.0.0.50</td>
+                                            <td class="py-2 text-gray-400">2024-01-15 11:15:23</td>
+                                        </tr>
+                                        <tr class="border-b border-gray-800">
+                                            <td class="py-2 text-green-400">003</td>
+                                            <td class="py-2 text-orange-400">UNUSUAL_TRAFFIC</td>
+                                            <td class="py-2">High frequency requests detected</td>
+                                            <td class="py-2 font-mono">203.0.113.42</td>
+                                            <td class="py-2 text-gray-400">2024-01-15 12:45:10</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Incidents -->
+                        <div class="bg-gray-900 border border-gray-700 rounded-lg p-6 hover:border-green-500/50 transition-colors">
+                            <h2 class="text-lg font-semibold text-green-400 mb-4">INCIDENTS</h2>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr class="border-b border-gray-700">
+                                            <th class="text-left text-gray-400 py-2">ID</th>
+                                            <th class="text-left text-gray-400 py-2">ALERT_ID</th>
+                                            <th class="text-left text-gray-400 py-2">ACTION</th>
+                                            <th class="text-left text-gray-400 py-2">RESULT</th>
+                                            <th class="text-left text-gray-400 py-2">TIMESTAMP</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="text-gray-300">
+                                        <tr class="border-b border-gray-800">
+                                            <td class="py-2 text-green-400">INC_001</td>
+                                            <td class="py-2">001</td>
+                                            <td class="py-2 text-blue-400">IP_BLOCKED</td>
+                                            <td class="py-2 text-green-400">SUCCESS</td>
+                                            <td class="py-2 text-gray-400">2024-01-15 10:31:15</td>
+                                        </tr>
+                                        <tr class="border-b border-gray-800">
+                                            <td class="py-2 text-green-400">INC_002</td>
+                                            <td class="py-2">002</td>
+                                            <td class="py-2 text-blue-400">REQUEST_FILTERED</td>
+                                            <td class="py-2 text-green-400">SUCCESS</td>
+                                            <td class="py-2 text-gray-400">2024-01-15 11:15:24</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                mainDashboard.classList.add('hidden');
+                adminContent.classList.remove('hidden');
+            }
+
+            // Load simulation page
+            function loadSimulation() {
+                adminContent.innerHTML = `
+                    <div class="space-y-6">
+                        <h1 class="text-2xl font-bold text-green-400 flex items-center">
+                            <svg class="w-6 h-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            RED_BLUE_SIMULATION
+                        </h1>
+
+                        <!-- Simulation Controls -->
+                        <div class="bg-gray-900 border border-gray-700 rounded-lg p-6 hover:border-green-500/50 transition-colors">
+                            <h2 class="text-lg font-semibold text-green-400 mb-4">SIMULATE_ATTACKS</h2>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <button id="sqlmap-sim-btn" class="bg-red-500 hover:bg-red-400 text-white font-semibold py-3 px-4 rounded-md transition-all duration-200 transform hover:scale-105">
+                                    SQL_INJECTION
+                                </button>
+                                <button id="bruteforce-sim-btn" class="bg-red-500 hover:bg-red-400 text-white font-semibold py-3 px-4 rounded-md transition-all duration-200 transform hover:scale-105">
+                                    BRUTE_FORCE
+                                </button>
+                                <button id="replay-sim-btn" class="bg-red-500 hover:bg-red-400 text-white font-semibold py-3 px-4 rounded-md transition-all duration-200 transform hover:scale-105">
+                                    REPLAY_ATTACK
+                                </button>
+                                <button id="mitm-sim-btn" class="bg-red-500 hover:bg-red-400 text-white font-semibold py-3 px-4 rounded-md transition-all duration-200 transform hover:scale-105">
+                                    MITM_ATTACK
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Simulation Output -->
+                        <div class="bg-gray-900 border border-gray-700 rounded-lg p-6 hover:border-green-500/50 transition-colors">
+                            <h2 class="text-lg font-semibold text-green-400 mb-4">SIMULATION_OUTPUT</h2>
+                            <div id="simulation-output" class="bg-black border border-gray-600 rounded-lg p-4 h-64 overflow-y-auto font-mono text-sm">
+                                <div class="text-gray-400">$ waiting for simulation...</div>
+                                <div class="text-green-400 animate-pulse">_</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                mainDashboard.classList.add('hidden');
+                adminContent.classList.remove('hidden');
+                setupSimulationButtons();
+            }
+
+            // Setup simulation buttons
+            function setupSimulationButtons() {
+                const output = document.getElementById('simulation-output');
+                
+                function runSimulation(type) {
+                    output.innerHTML = `<div class="text-green-400">$ running ${type} simulation...</div>`;
+                    
+                    setTimeout(() => {
+                        const steps = [
+                            { actor: 'Red Team', action: `Initiating ${type} attack vector` },
+                            { actor: 'Red Team', action: 'Scanning for vulnerabilities...' },
+                            { actor: 'Blue Team', action: 'Anomaly detected in traffic patterns' },
+                            { actor: 'Blue Team', action: 'Triggering automated response protocols' },
+                            { actor: 'Red Team', action: 'Attack payload delivered' },
+                            { actor: 'Blue Team', action: 'Blocking suspicious IP addresses' },
+                            { actor: 'Blue Team', action: 'Incident logged and escalated' },
+                            { actor: 'System', action: 'Simulation completed successfully' }
+                        ];
+
+                        output.innerHTML = '';
+                        steps.forEach((step, index) => {
+                            setTimeout(() => {
+                                const div = document.createElement('div');
+                                div.className = `mb-2 p-2 rounded ${
+                                    step.actor === 'Red Team' ? 'bg-red-900/30 text-red-400' :
+                                    step.actor === 'Blue Team' ? 'bg-blue-900/30 text-blue-400' :
+                                    'bg-green-900/30 text-green-400'
+                                }`;
+                                div.textContent = `[${step.actor}] ${step.action}`;
+                                output.appendChild(div);
+                                output.scrollTop = output.scrollHeight;
+                            }, index * 800);
+                        });
+                    }, 500);
+                }
+
+                document.getElementById('sqlmap-sim-btn').addEventListener('click', () => runSimulation('SQL_INJECTION'));
+                document.getElementById('bruteforce-sim-btn').addEventListener('click', () => runSimulation('BRUTE_FORCE'));
+                document.getElementById('replay-sim-btn').addEventListener('click', () => runSimulation('REPLAY_ATTACK'));
+                document.getElementById('mitm-sim-btn').addEventListener('click', () => runSimulation('MITM'));
+            }
+
+            // Initialize charts for analytics
+            function initCharts() {
+                const chartOptions = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { 
+                            backgroundColor: 'rgb(17, 24, 39)',
+                            titleColor: 'rgb(34, 197, 94)',
+                            bodyColor: 'rgb(226, 232, 240)',
+                            borderColor: 'rgb(75, 85, 99)',
+                            borderWidth: 1
+                        }
+                    },
+                    scales: {
+                        x: { 
+                            display: true,
+                            grid: { color: 'rgb(55, 65, 81)' },
+                            ticks: { color: 'rgb(156, 163, 175)' }
+                        },
+                        y: { 
+                            display: true,
+                            grid: { color: 'rgb(55, 65, 81)' },
+                            ticks: { color: 'rgb(156, 163, 175)' }
+                        }
+                    }
+                };
+
+                // VWAP Chart
+                const vwapCtx = document.getElementById('vwap-chart');
+                if (vwapCtx) {
+                    new Chart(vwapCtx, {
+                        type: 'line',
+                        data: {
+                            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                            datasets: [{
+                                data: [45000, 47000, 46500, 48000, 49000, 47500],
+                                borderColor: 'rgb(34, 197, 94)',
+                                backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                                fill: true,
+                                tension: 0.4
+                            }]
+                        },
+                        options: chartOptions
+                    });
+                    document.getElementById('vwap-loading').style.display = 'none';
+                }
+
+                // Order Distribution Chart
+                const orderCtx = document.getElementById('order-distribution-chart');
+                if (orderCtx) {
+                    new Chart(orderCtx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['BTC', 'ETH', 'ADA', 'DOT', 'SOL'],
+                            datasets: [{
+                                data: [35, 25, 15, 15, 10],
+                                backgroundColor: [
+                                    'rgb(34, 197, 94)',
+                                    'rgb(59, 130, 246)',
+                                    'rgb(251, 191, 36)',
+                                    'rgb(239, 68, 68)',
+                                    'rgb(168, 85, 247)'
+                                ]
+                            }]
+                        },
+                        options: {
+                            ...chartOptions,
+                            scales: {}
+                        }
+                    });
+                    document.getElementById('order-distribution-loading').style.display = 'none';
+                }
+
+                // Trade Volume Chart
+                const volumeCtx = document.getElementById('trade-volume-chart');
+                if (volumeCtx) {
+                    new Chart(volumeCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                            datasets: [{
+                                data: [1200, 1900, 800, 1500, 2000, 1100, 900],
+                                backgroundColor: 'rgba(34, 197, 94, 0.7)',
+                                borderColor: 'rgb(34, 197, 94)',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: chartOptions
+                    });
+                    document.getElementById('trade-volume-loading').style.display = 'none';
+                }
+
+                // User Activity Chart
+                const activityCtx = document.getElementById('user-activity-chart');
+                if (activityCtx) {
+                    new Chart(activityCtx, {
+                        type: 'line',
+                        data: {
+                            labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+                            datasets: [{
+                                data: [150, 280, 320, 450],
+                                borderColor: 'rgb(59, 130, 246)',
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                fill: true,
+                                tension: 0.4
+                            }]
+                        },
+                        options: chartOptions
+                    });
+                    document.getElementById('user-activity-loading').style.display = 'none';
+                }
+            }
+
+            // Demo data for system status
+            setTimeout(() => {
+                document.getElementById('merkle-root').textContent = '0x1a2b3c4d5e6f...';
+                document.getElementById('vwap').textContent = '$47,825.42';
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

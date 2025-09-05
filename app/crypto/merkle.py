@@ -35,11 +35,33 @@ class MerkleTree:
         self.transactions.append(transaction)
         self.tree = self._create_tree()
 
-    def verify_transaction(self, transaction):
+    def get_proof(self, transaction):
         tx_hash = self._hash(transaction)
         if tx_hash not in self.tree[0]:
-            return False
-        return True
+            return None
+        
+        proof = []
+        index = self.tree[0].index(tx_hash)
+        
+        for i in range(len(self.tree) - 1):
+            level = self.tree[i]
+            is_right_node = index % 2
+            sibling_index = index - 1 if is_right_node else index + 1
+            
+            if sibling_index < len(level):
+                proof.append(level[sibling_index])
+            
+            index //= 2
+            
+        return proof
+
+    def verify_transaction(self, transaction, proof, root):
+        leaf = self._hash(transaction)
+        
+        for sibling in proof:
+            leaf = self._hash(leaf + sibling)
+            
+        return leaf == root
 
     async def append_leaf(self, leaf_hash: str) -> str:
         """Appends a leaf hash to the Merkle tree and returns the new root."""
@@ -54,11 +76,10 @@ class MerkleTree:
 
     async def prove(self, order_id: int) -> dict:
         """Generates a Merkle proof for a given order ID."""
-        # This is a placeholder. Full Merkle proof generation is complex.
-        # For MVP, we'll just return the leaf and current root.
         leaf = self.leaf_for_order(order_id)
+        proof = self.get_proof(leaf)
         root = self.get_root()
-        return {"leaf": leaf, "path": [], "root": root}
+        return {"leaf": leaf, "path": proof, "root": root}
 
     async def checkpoint_every(self, n: int):
         """Stores the current Merkle root in the database every N appends."""

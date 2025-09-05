@@ -1,7 +1,8 @@
 import re
 from app.database import database
-from app.models import ids_alerts
+from app.models import ids_alerts, login_attempts
 from sqlalchemy.sql import func
+from datetime import datetime, timedelta
 
 # Simple regex patterns for IDS-lite
 SQLI_PATTERNS = [
@@ -13,9 +14,6 @@ SQLI_PATTERNS = [
 BRUTE_FORCE_THRESHOLD = 5 # Max failed attempts
 BRUTE_FORCE_WINDOW = 60 # Seconds
 
-# In-memory store for rate limiting (for simplicity in MVP)
-failed_login_attempts = {}
-
 async def scan_request_for_ioc(request_data: str) -> list:
     """Scans request data for Indicators of Compromise (IoC) using regex."""
     matches = []
@@ -25,24 +23,33 @@ async def scan_request_for_ioc(request_data: str) -> list:
     return matches
 
 async def rate_limit_key(ip: str, username: str) -> bool:
-    """Checks and updates failed login attempts for rate limiting."""
-    current_time = func.now()
-    if username not in failed_login_attempts:
-        failed_login_attempts[username] = []
-
+    """Checks and updates failed login attempts for rate limiting using the database."""
     # Remove old attempts
-    failed_login_attempts[username] = [
-        t for t in failed_login_attempts[username] if (current_time - t).total_seconds() < BRUTE_FORCE_WINDOW
-    ]
+    cutoff = datetime.utcnow() - timedelta(seconds=BRUTE_FORCE_WINDOW)
+    query = login_attempts.delete().where(
+        (login_attempts.c.ip_address == ip) &
+        (login_attempts.c.username == username) &
+        (login_attempts.c.timestamp < cutoff)
+    )
+    await database.execute(query)
 
-    failed_login_attempts[username].append(current_time)
+    # Add new attempt
+    query = login_attempts.insert().values(ip_address=ip, username=username)
+    await database.execute(query)
 
-    if len(failed_login_attempts[username]) >= BRUTE_FORCE_THRESHOLD:
+    # Check attempt count
+    query = login_attempts.select().where(
+        (login_attempts.c.ip_address == ip) &
+        (login_attempts.c.username == username)
+    )
+    attempts = await database.fetch_all(query)
+
+    if len(attempts) >= BRUTE_FORCE_THRESHOLD:
         await raise_alert(
             alert_type="brute_force",
             description=f"Brute-force attempt detected for user {username} from IP {ip}",
             src_ip=ip,
-            raw=f"Failed login attempts: {len(failed_login_attempts[username])}"
+            raw=f"Failed login attempts: {len(attempts)}"
         )
         return True # Rate limited
     return False # Not rate limited

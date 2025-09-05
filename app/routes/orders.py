@@ -4,12 +4,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 from app.database import database
-from app.models import orders, trades, users
-from app.security import get_current_user, get_current_admin_user
-from app.schemas import UserResponse, OrderResponse, SignedOrder, TradeResponse
+from app.models import orders, trades, users, merkle_trades, encrypted_vwap
+from app.security import get_current_user, get_current_admin_user,used_nonces
+from app.schemas import UserResponse, OrderResponse, SignedOrder, TradeResponse, MerkleProof,Order
 from app.crypto.signatures import verify as verify_signature
 from app.crypto.encryption import encrypt_order, decrypt_order
 from app.crypto.merkle import MerkleTree
+from app.crypto.he import generate_paillier_keypair, paillier_encrypt
 import os
 import json
 from datetime import datetime
@@ -24,10 +25,21 @@ router = APIRouter()
 order_book = OrderBook()
 matching_engine = MatchingEngine(order_book)
 
-trades_log = [] # This should ideally be managed globally or via DB
+# Initialize trades_log from the database
+trades_log = []
 merkle_tree = MerkleTree(trades_log)
 
+# Generate Paillier key pair
+paillier_public_key, paillier_private_key = generate_paillier_keypair()
 
+@router.on_event("startup")
+async def startup():
+    query = merkle_trades.select()
+    db_trades = await database.fetch_all(query)
+    for trade in db_trades:
+        trades_log.append(trade["trade_data"])
+    global merkle_tree
+    merkle_tree = MerkleTree(trades_log)
 
 @router.get("/admin/users", response_model=List[UserResponse])
 async def get_all_users(current_user: UserResponse = Depends(get_current_admin_user)):
@@ -69,17 +81,6 @@ async def place_order(signed_order: SignedOrder, current_user: UserResponse = De
     }
     ciphertext, nonce, tag, header = encrypt_order(order_to_encrypt, aes_key)
 
-    # Sign the ciphertext (or a hash of it)
-    # For simplicity, signing the original order_data (which is the signed_order.order.json())
-    # In a real scenario, you might sign the ciphertext or a hash of the encrypted data.
-    # The client already signed the original order_data, so we'll use that signature for now.
-    # If we were to sign on the server, we'd need the server's private key.
-    # For now, we'll use the signature provided by the client.
-
-    # Generate Merkle leaf (hash of the order data)
-    merkle_leaf_data = f"{signed_order.order.id}-{current_user['id']}-{signed_order.order.stock}-{signed_order.order.side}-{signed_order.order.qty}-{signed_order.order.price}"
-    merkle_leaf = MerkleTree([merkle_leaf_data]).get_root() # Create a temporary MerkleTree for a single leaf
-
     order_data_for_db = {
         "id": signed_order.order.id,
         "user_id": current_user["id"],
@@ -90,7 +91,6 @@ async def place_order(signed_order: SignedOrder, current_user: UserResponse = De
         "ciphertext": ciphertext.hex(), # Store as hex string
         "nonce": nonce.hex(), # Store as hex string
         "signature": signed_order.signature, # Use client-provided signature
-        "merkle_leaf": merkle_leaf,
         "created_at": datetime.now()
     }
 
@@ -104,23 +104,23 @@ async def place_order(signed_order: SignedOrder, current_user: UserResponse = De
     for trade in trades:
         trade["id"] = str(trade["buy_order_id"]) + "-" + str(trade["sell_order_id"]) # Simple trade ID
         trade["timestamp"] = datetime.now().isoformat()
-        trades_log.append(str(trade))
-        merkle_tree.add_transaction(str(trade))
+        trade_str = str(trade)
+        trades_log.append(trade_str)
+        merkle_tree.add_transaction(trade_str)
         
         # Save trade to database
         query = trades.insert().values(**trade)
         await database.execute(query)
+        # Save trade to merkle_trades table
+        query = merkle_trades.insert().values(trade_data=trade_str)
+        await database.execute(query)
         logger.info(f"Trade {trade['id']} matched for order {signed_order.order.id}.")
 
-        # Add to SSE index (commented out as SSE is managed in main.py)
-        # keywords = [order_data_for_db.get('user_id'), order_data_for_db.get('stock'), order_data_for_db.get('side')]
-        # keywords = [k for k in keywords if k]
-        # sse.add_document(f"trade_{len(trades_log)}", keywords)
-
-        # Encrypt and store price for VWAP (commented out as Paillier is managed in main.py)
-        # if 'price' in order_data_for_db and isinstance(order_data_for_db['price'], (int, float)):
-        #     encrypted_price = encrypt_value(paillier_public_key, order_data_for_db['price'])
-        #     encrypted_prices.append(encrypted_price)
+        # Encrypt and store price and quantity for VWAP
+        encrypted_price = paillier_encrypt(int(trade["price"] * 100), paillier_public_key)
+        encrypted_quantity = paillier_encrypt(trade["amount"], paillier_public_key)
+        query = encrypted_vwap.insert().values(encrypted_price=str(encrypted_price), encrypted_quantity=str(encrypted_quantity))
+        await database.execute(query)
 
     return {"status": "received", "trades": trades, "merkle_root": merkle_tree.get_root()}
 
@@ -146,7 +146,6 @@ async def list_orders(current_user: UserResponse = Depends(get_current_user)):
             "ciphertext": order_record["ciphertext"],
             "nonce": order_record["nonce"],
             "signature": order_record["signature"],
-            "merkle_leaf": order_record["merkle_leaf"],
             "created_at": order_record["created_at"]
         }
         decrypted_orders.append(OrderResponse(**decrypted_order_data))
@@ -161,8 +160,14 @@ async def get_order_detail(order_id: int, current_user: UserResponse = Depends(g
     if not order_record:
         raise HTTPException(status_code=404, detail="Order not found or not authorized")
 
-    # Generate Merkle proof (placeholder)
-    merkle_proof = await MerkleTree([]).prove(order_id) # MerkleTree needs to be initialized with all transactions
+    # Find the trade associated with this order
+    trade_query = trades.select().where((trades.c.buy_order_id == str(order_id)) | (trades.c.sell_order_id == str(order_id)))
+    trade_record = await database.fetch_one(trade_query)
+
+    merkle_proof = None
+    if trade_record:
+        trade_str = str(dict(trade_record))
+        merkle_proof = merkle_tree.get_proof(trade_str)
 
     # Decrypt order (placeholder)
     decrypted_order_data = {
@@ -175,11 +180,15 @@ async def get_order_detail(order_id: int, current_user: UserResponse = Depends(g
         "ciphertext": order_record["ciphertext"],
         "nonce": order_record["nonce"],
         "signature": order_record["signature"],
-        "merkle_leaf": order_record["merkle_leaf"],
         "created_at": order_record["created_at"]
     }
 
     return {"order": OrderResponse(**decrypted_order_data), "merkle_proof": merkle_proof}
+
+@router.post("/verify_trade")
+async def verify_trade(proof: MerkleProof):
+    is_valid = merkle_tree.verify_transaction(proof.transaction, proof.proof, proof.root)
+    return {"is_valid": is_valid}
 
 @router.get("/orderbook/{stock}")
 def get_order_book(stock: str):
@@ -187,3 +196,74 @@ def get_order_book(stock: str):
         "buy_orders": order_book.buy_orders.get(stock, []),
         "sell_orders": order_book.sell_orders.get(stock, [])
     }
+
+@router.post("/orders/new_with_nonce")
+async def place_order_with_nonce(order: Order, current_user: dict = Depends(get_current_user)):
+    if order.nonce in used_nonces:
+        raise HTTPException(status_code=400, detail="Replay attack detected")
+    used_nonces.add(order.nonce)
+
+    logger.info(f"User '{current_user['username']}' attempting to place order: {order.dict()}")
+    # In a real app, we would look up the public key based on the user_id
+    # For now, we accept the public key in the request
+    # Generate a random AES key for order encryption
+    aes_key = os.urandom(16) # 128-bit key
+
+    # Encrypt the order details
+    order_to_encrypt = {
+        "id": order.id,
+        "user_id": current_user["id"],
+        "stock": order.stock,
+        "side": order.side,
+        "qty": order.qty,
+        "price": order.price
+    }
+    ciphertext, nonce, tag, header = encrypt_order(order_to_encrypt, aes_key)
+
+    order_data_for_db = {
+        "id": order.id,
+        "user_id": current_user["id"],
+        "stock": order.stock,
+        "qty": order.qty,
+        "side": order.side,
+        "price": order.price,
+        "ciphertext": ciphertext.hex(), # Store as hex string
+        "nonce": nonce.hex(), # Store as hex string
+        "signature": "", # No signature for this endpoint
+        "created_at": datetime.now()
+    }
+
+    # Save order to database
+    query = orders.insert().values(**order_data_for_db)
+    await database.execute(query)
+    logger.info(f"Order {order.id} placed by {current_user['username']}.")
+
+    order_for_matching_engine = order_data_for_db.copy()
+    order_for_matching_engine["amount"] = order.qty
+    order_for_matching_engine["type"] = order.side
+    order_for_matching_engine["asset"] = order.stock
+
+    trades = matching_engine.match_order(order_for_matching_engine) # Pass order_data_for_db to matching engine
+    
+    for trade in trades:
+        trade["id"] = str(trade["buy_order_id"]) + "-" + str(trade["sell_order_id"]) # Simple trade ID
+        trade["timestamp"] = datetime.now().isoformat()
+        trade_str = str(trade)
+        trades_log.append(trade_str)
+        merkle_tree.add_transaction(trade_str)
+        
+        # Save trade to database
+        query = trades.insert().values(**trade)
+        await database.execute(query)
+        # Save trade to merkle_trades table
+        query = merkle_trades.insert().values(trade_data=trade_str)
+        await database.execute(query)
+        logger.info(f"Trade {trade['id']} matched for order {order.id}.")
+
+        # Encrypt and store price and quantity for VWAP
+        encrypted_price = paillier_encrypt(int(trade["price"] * 100), paillier_public_key)
+        encrypted_quantity = paillier_encrypt(trade["amount"], paillier_public_key)
+        query = encrypted_vwap.insert().values(encrypted_price=str(encrypted_price), encrypted_quantity=str(encrypted_quantity))
+        await database.execute(query)
+
+    return {"status": "received", "trades": trades, "merkle_root": merkle_tree.get_root()}

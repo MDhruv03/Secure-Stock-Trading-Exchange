@@ -1,6 +1,7 @@
 from app.database import database
 from app.models import incidents, blocklist, ids_alerts
 from sqlalchemy.sql import func
+from fastapi import HTTPException
 
 async def block_ip(ip: str, reason: str = 'IDS match') -> bool:
     """Blocks an IP address by adding it to the blocklist table."""

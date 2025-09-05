@@ -1,3 +1,4 @@
+
 from datetime import datetime, timedelta
 from typing import Optional
 import logging
@@ -89,22 +90,3 @@ async def get_current_admin_user(current_user: dict = Depends(get_current_user))
             detail="Not enough permissions",
         )
     return current_user
-
-async def authenticate_user(username, password):
-    query = users.select().where(users.c.username == username)
-    user = await database.fetch_one(query)
-    if not user:
-        return False
-    if not verify_password(password, user["password_hash"]):
-        return False
-    return user
-
-used_nonces = set()
-
-async def try_login(username, password):
-    # This is a simplified version of the login logic for the simulation
-    # In a real application, you would use the same logic as the /token endpoint
-    user = await authenticate_user(username, password)
-    if not user:
-        return False
-    return True

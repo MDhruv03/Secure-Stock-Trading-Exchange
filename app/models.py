@@ -27,9 +27,15 @@ orders = Table(
     Column("ciphertext", String), # Added
     Column("nonce", String), # Added
     Column("signature", String), # Added
-    Column("merkle_leaf", String), # Added
     Column("created_at", DateTime, default=func.now())
     # Removed 'status'
+)
+
+merkle_trades = Table(
+    "merkle_trades",
+    metadata,
+    Column("id", Integer, primary_key=True, index=True),
+    Column("trade_data", String, unique=True),
 )
 
 trades = Table( # Keeping existing trades table as it's used
@@ -81,4 +87,21 @@ blocklist = Table(
     Column("ip", String, unique=True),
     Column("reason", String, nullable=True),
     Column("created_at", DateTime, default=func.now())
+)
+
+encrypted_vwap = Table(
+    "encrypted_vwap",
+    metadata,
+    Column("id", Integer, primary_key=True, index=True),
+    Column("encrypted_price", String),
+    Column("encrypted_quantity", String),
+)
+
+login_attempts = Table(
+    "login_attempts",
+    metadata,
+    Column("id", Integer, primary_key=True, index=True),
+    Column("ip_address", String),
+    Column("username", String),
+    Column("timestamp", DateTime, default=func.now()),
 )

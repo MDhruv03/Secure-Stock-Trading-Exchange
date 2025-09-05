@@ -1,17 +1,12 @@
-from Crypto.Cipher import AES, PKCS1_OAEP
-from Crypto.Random import get_random_bytes
+import hashlib
+import secrets
+import string
 
-def encrypt_aes_gcm(key, plaintext):
-    """Encrypts plaintext using AES-GCM."""
-    header = b"header"
-    cipher = AES.new(key, AES.MODE_GCM)
-    cipher.update(header)
-    ciphertext, tag = cipher.encrypt_and_digest(plaintext)
-    return cipher.nonce, header, ciphertext, tag
+def hash_data(data: str) -> str:
+    """Hashes a string using SHA256."""
+    return hashlib.sha256(data.encode('utf-8')).hexdigest()
 
-def decrypt_aes_gcm(key, nonce, header, ciphertext, tag):
-    """Decrypts ciphertext using AES-GCM."""
-    cipher = AES.new(key, AES.MODE_GCM, nonce)
-    cipher.update(header)
-    plaintext = cipher.decrypt_and_verify(ciphertext, tag)
-    return plaintext
+def generate_random_string(length: int) -> str:
+    """Generates a random string of a given length."""
+    alphabet = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(length))

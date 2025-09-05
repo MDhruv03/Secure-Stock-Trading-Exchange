@@ -42,7 +42,6 @@ class Order(BaseModel): # Moved from main.py
     ciphertext: str # Added
     nonce: str # Added
     signature: str # Added
-    merkle_leaf: str # Added
     created_at: datetime # Added
 
 class SignedOrder(BaseModel): # Moved from main.py
@@ -60,7 +59,6 @@ class OrderResponse(BaseModel):
     ciphertext: str # Added
     nonce: str # Added
     signature: str # Added
-    merkle_leaf: str # Added
     created_at: datetime # Added
 
     class Config:
@@ -76,3 +74,8 @@ class TradeResponse(BaseModel):
 
     class Config:
         orm_mode = True
+
+class MerkleProof(BaseModel):
+    transaction: str
+    proof: list
+    root: str

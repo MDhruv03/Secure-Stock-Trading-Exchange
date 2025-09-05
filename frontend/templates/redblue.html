@@ -9,30 +9,103 @@
         body {
             font-family: 'Roboto Mono', monospace;
         }
+        .timeline-item {
+            display: flex;
+            margin-bottom: 1rem;
+        }
+        .timeline-actor {
+            font-weight: bold;
+            width: 100px;
+        }
+        .timeline-action {
+            flex: 1;
+        }
+        .timeline-timestamp {
+            color: #9ca3af;
+            font-size: 0.8rem;
+        }
     </style>
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans leading-normal tracking-normal">
     <div class="container mx-auto p-4">
-        <header class="flex justify-between items-center mb-4">
-            <h1 class="text-2xl font-bold">Red/Blue Team Simulation</h1>
+        <header class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold text-blue-400">Red/Blue Team Simulation</h1>
             <nav>
-                <a href="#" id="back-to-dashboard" class="text-blue-400 hover:underline">Back to Dashboard</a>
+                <a href="/" id="back-to-dashboard" class="text-blue-400 hover:underline">Back to Dashboard</a>
             </nav>
         </header>
 
-        <main class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
-            <h2 class="text-xl font-semibold mb-4">Simulate Attacks</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <button id="sqlmap-sim-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">Simulate SQL Injection</button>
-                <button id="bruteforce-sim-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">Simulate Brute Force</button>
-                <button id="replay-sim-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">Simulate Replay Attack</button>
-                <button id="mitm-sim-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">Simulate MITM Attack</button>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <!-- Simulation Controls -->
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+                <h2 class="text-2xl font-semibold mb-6">Simulate Attacks</h2>
+                <div class="space-y-4">
+                    <div>
+                        <button id="sqlmap-sim-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded transition duration-300 ease-in-out transform hover:scale-105">Simulate SQL Injection</button>
+                        <p class="text-sm text-gray-400 mt-2">Tries to bypass authentication by injecting malicious SQL code.</p>
+                    </div>
+                    <div>
+                        <button id="bruteforce-sim-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded transition duration-300 ease-in-out transform hover:scale-105">Simulate Brute Force</button>
+                        <p class="text-sm text-gray-400 mt-2">Attempts to guess a user's password using a wordlist.</p>
+                    </div>
+                    <div>
+                        <button id="replay-sim-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded transition duration-300 ease-in-out transform hover:scale-105">Simulate Replay Attack</button>
+                        <p class="text-sm text-gray-400 mt-2">Captures and replays a valid request to the server.</p>
+                    </div>
+                    <div>
+                        <button id="mitm-sim-btn" class="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded transition duration-300 ease-in-out transform hover:scale-105" disabled>Simulate MITM Attack (Coming Soon)</button>
+                        <p class="text-sm text-gray-400 mt-2">Intercepts and manipulates communication between two parties.</p>
+                    </div>
+                </div>
             </div>
 
-            <h2 class="text-xl font-semibold mt-8 mb-4">Simulation Output</h2>
-            <pre id="simulation-output" class="bg-gray-900 text-green-400 p-4 rounded-md overflow-auto h-64 border border-gray-700"></pre>
-        </main>
+            <!-- Simulation Output -->
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+                <h2 class="text-2xl font-semibold mb-6">Simulation Timeline</h2>
+                <div id="simulation-output" class="bg-gray-900 p-4 rounded-md overflow-auto h-96 border border-gray-700"></div>
+            </div>
+        </div>
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const sqlmapBtn = document.getElementById('sqlmap-sim-btn');
+            const bruteforceBtn = document.getElementById('bruteforce-sim-btn');
+            const replayBtn = document.getElementById('replay-sim-btn');
+            const outputEl = document.getElementById('simulation-output');
+
+            const simulate = async (url) => {
+                outputEl.innerHTML = '<div class="text-yellow-400">Running simulation...</div>';
+                try {
+                    const response = await fetch(url, { method: 'POST' });
+                    const data = await response.json();
+                    if (data.error) {
+                        outputEl.innerHTML = `<div class="text-red-500">Error: ${data.error}</div>`;
+                        return;
+                    }
+                    let outputHtml = '';
+                    data.steps.forEach(step => {
+                        const actorColor = step.actor === 'Red Team' ? 'text-red-500' : 'text-blue-500';
+                        const timestamp = new Date(step.timestamp * 1000).toLocaleTimeString();
+                        outputHtml += `
+                            <div class="timeline-item">
+                                <div class="timeline-actor ${actorColor}">[${step.actor}]</div>
+                                <div class="timeline-action">${step.action}</div>
+                                <div class="timeline-timestamp">${timestamp}</div>
+                            </div>
+                        `;
+                    });
+                    outputEl.innerHTML = outputHtml;
+                } catch (error) {
+                    outputEl.innerHTML = `<div class="text-red-500">Error: ${error.message}</div>`;
+                }
+            };
+
+            sqlmapBtn.addEventListener('click', () => simulate('/sim/sqlmap'));
+            bruteforceBtn.addEventListener('click', () => simulate('/sim/bruteforce'));
+            replayBtn.addEventListener('click', () => simulate('/sim/replay'));
+        });
+    </script>
 </body>
 </html>

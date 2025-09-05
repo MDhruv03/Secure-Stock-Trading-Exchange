@@ -1,34 +1,24 @@
+from app.database import database
+from app.models import incidents, ids_alerts
+from sqlalchemy.sql import func
 
-import re
-import os
+async def create_incident_from_alert(alert_id: int):
+    """Creates an incident from an alert and assigns it to an analyst."""
+    query = ids_alerts.select().where(ids_alerts.c.id == alert_id)
+    alert = await database.fetch_one(query)
 
-def parse_and_block_ips(log_file, blocklist_file):
-    """Parses a log file for IDS alerts and blocks the attacker's IP."""
-    with open(log_file, 'r') as f:
-        alerts = f.readlines()
+    if not alert:
+        return
 
-    blocked_ips = set()
-    if os.path.exists(blocklist_file):
-        with open(blocklist_file, 'r') as f:
-            for ip in f.readlines():
-                blocked_ips.add(ip.strip())
+    # In a real system, this would assign to a specific analyst
+    # or a queue.
+    action = f"Investigate {alert['alert_type']} alert for IP {alert['src_ip']}"
 
-    ip_pattern = re.compile(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})')
-
-    for alert in alerts:
-        match = ip_pattern.search(alert)
-        if match:
-            ip = match.group(1)
-            if ip not in blocked_ips:
-                print(f"Blocking IP: {ip}")
-                with open(blocklist_file, 'a') as f:
-                    f.write(f"{ip}\n")
-                blocked_ips.add(ip)
-            else:
-                print(f"IP already blocked: {ip}")
-
-if __name__ == '__main__':
-    script_dir = os.path.dirname(__file__)
-    log_file = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'ids_alerts.log'))
-    blocklist_file = os.path.abspath(os.path.join(script_dir, '..', '..', 'data', 'blocked_ips.txt'))
-    parse_and_block_ips(log_file, blocklist_file)
+    query = incidents.insert().values(
+        alert_id=alert_id,
+        action=action,
+        result="pending",
+        created_at=func.now()
+    )
+    await database.execute(query)
+    print(f"Incident created for alert {alert_id}")

@@ -15,6 +15,7 @@ from app.routes.orders import router as orders_router
 from app.routes.analytics import router as analytics_router
 from app.routes.logs import router as logs_router
 from app.routes.redblue import router as redblue_router
+from app.routes.utils import router as utils_router
 from app.utils.vulns import router as vulns_router
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -44,6 +45,7 @@ app.include_router(analytics_router)
 app.include_router(logs_router)
 app.include_router(redblue_router)
 app.include_router(vulns_router)
+app.include_router(utils_router)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="frontend/static"), name="static")

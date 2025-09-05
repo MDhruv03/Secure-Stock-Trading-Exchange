@@ -6,17 +6,16 @@ logger = logging.getLogger(__name__)
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from app.database import database
-from app.models import orders
+from app.models import encrypted_vwap, orders, trades, users
 from app.security import get_current_user, get_current_admin_user
-from app.common.analytics import decrypt_value, homomorphic_add, generate_paillier_keypair, encrypt_value
-from app.services.charts import vwap_png
+from app.crypto.he import paillier_decrypt
+from app.routes.orders import paillier_public_key, paillier_private_key
 import io
+from collections import Counter
+from datetime import datetime
 
 router = APIRouter()
 templates = Jinja2Templates(directory="frontend/templates")
-
-paillier_public_key, paillier_private_key = generate_paillier_keypair()
-encrypted_prices = []
 
 @router.get("/analytics", response_class=HTMLResponse)
 async def get_analytics_page(request: Request, current_user: dict = Depends(get_current_admin_user)):
@@ -25,32 +24,50 @@ async def get_analytics_page(request: Request, current_user: dict = Depends(get_
 
 @router.get("/analytics/vwap-data")
 async def get_vwap_data(current_user: dict = Depends(get_current_admin_user)):
-    # Fetch all orders (for simplicity, in a real app, filter by user or time)
-    query = orders.select()
-    all_orders = await database.fetch_all(query)
+    query = encrypted_vwap.select()
+    encrypted_data = await database.fetch_all(query)
 
-    prices = [order["price"] for order in all_orders]
-    quantities = [order["qty"] for order in all_orders]
+    if not encrypted_data:
+        return {"labels": [], "vwap": []}
+
+    encrypted_prices = [int(row["encrypted_price"]) for row in encrypted_data]
+    encrypted_quantities = [int(row["encrypted_quantity"]) for row in encrypted_data]
+
+    # Homomorphically add the encrypted prices and quantities
+    sum_encrypted_prices = encrypted_prices[0]
+    for i in range(1, len(encrypted_prices)):
+        sum_encrypted_prices = (sum_encrypted_prices * encrypted_prices[i]) % (paillier_public_key[0] ** 2)
+
+    sum_encrypted_quantities = encrypted_quantities[0]
+    for i in range(1, len(encrypted_quantities)):
+        sum_encrypted_quantities = (sum_encrypted_quantities * encrypted_quantities[i]) % (paillier_public_key[0] ** 2)
+
+    # Decrypt the sums
+    total_price = paillier_decrypt(sum_encrypted_prices, paillier_public_key, paillier_private_key) / 100
+    total_quantity = paillier_decrypt(sum_encrypted_quantities, paillier_public_key, paillier_private_key)
 
     # Calculate VWAP
-    vwap_values = []
-    cumulative_price_x_quantity = 0
-    cumulative_quantity = 0
-    for price, quantity in zip(prices, quantities):
-        cumulative_price_x_quantity += price * quantity
-        cumulative_quantity += quantity
-        vwap = cumulative_price_x_quantity / cumulative_quantity if cumulative_quantity else 0
-        vwap_values.append(vwap)
+    vwap = total_price / total_quantity if total_quantity else 0
 
-    return {"labels": list(range(len(all_orders))), "vwap": vwap_values}
+    return {"labels": list(range(len(encrypted_data))), "vwap": [vwap] * len(encrypted_data)}
 
-@router.get("/vwap")
-def get_vwap():
-    if not encrypted_prices:
-        return {"average_price": 0}
+@router.get("/analytics/order-distribution")
+async def get_order_distribution(current_user: dict = Depends(get_current_admin_user)):
+    query = orders.select()
+    all_orders = await database.fetch_all(query)
+    stock_counts = Counter(order["stock"] for order in all_orders)
+    return {"labels": list(stock_counts.keys()), "data": list(stock_counts.values())}
 
-    sum_of_prices_encrypted = homomorphic_add(encrypted_prices)
-    sum_of_prices = decrypt_value(paillier_private_key, sum_of_prices_encrypted)
-    average_price = sum_of_prices / len(encrypted_prices)
+@router.get("/analytics/trade-volume")
+async def get_trade_volume(current_user: dict = Depends(get_current_admin_user)):
+    query = trades.select().order_by(trades.c.timestamp)
+    all_trades = await database.fetch_all(query)
+    trade_counts = Counter(datetime.fromisoformat(trade["timestamp"]).strftime('%Y-%m-%d') for trade in all_trades)
+    return {"labels": list(trade_counts.keys()), "data": list(trade_counts.values())}
 
-    return {"average_price": average_price}
+@router.get("/analytics/user-activity")
+async def get_user_activity(current_user: dict = Depends(get_current_admin_user)):
+    query = users.select().order_by(users.c.created_at)
+    all_users = await database.fetch_all(query)
+    user_counts = Counter(user["created_at"].strftime('%Y-%m-%d') for user in all_users)
+    return {"labels": list(user_counts.keys()), "data": list(user_counts.values())}
