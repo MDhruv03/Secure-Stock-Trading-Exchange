@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  secure-trading-platform:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - SECRET_KEY=your-secret-key-here-change-in-production
+      - DATABASE_URL=sqlite:///./trading_platform.db
+      - AES_KEY=your-aes-key-here-must-be-32-bytes
+      - RSA_KEY_SIZE=2048
+      - MAX_LOGIN_ATTEMPTS=5
+      - BLOCK_DURATION_MINUTES=30
+      - DEBUG=True
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 5s
+
+  # Optional: Add a database service if you want to use PostgreSQL instead of SQLite
+  # database:
+  #   image: postgres:13
+  #   environment:
+  #     POSTGRES_DB: trading_platform
+  #     POSTGRES_USER: trader
+  #     POSTGRES_PASSWORD: secure_password
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+
+volumes:
+  postgres_data:
