@@ -1,8 +1,10 @@
 import json
 import time
 from typing import Dict, Any, List, Optional
-from backend.app.database import get_db_manager
-from backend.app.crypto_service import get_crypto_service
+from backend.app.utils.database import get_db_manager
+from backend.app.services.crypto_service import get_crypto_service
+from backend.app.models.order import OrderSide, OrderStatus, OrderType
+from backend.app.models.transaction import TransactionStatus
 
 class TradingService:
     """
@@ -14,7 +16,7 @@ class TradingService:
         self.db = get_db_manager()
         self.crypto = get_crypto_service()
     
-    def create_order(self, user_id: int, symbol: str, side: str, quantity: float, price: float) -> Dict[str, Any]:
+    def create_order(self, user_id: int, symbol: str, side: str, quantity: float, price: float, order_type: str = "MARKET") -> Dict[str, Any]:
         """
         Create a new secure order with real encryption
         """
@@ -24,6 +26,7 @@ class TradingService:
                 "user_id": user_id,
                 "symbol": symbol,
                 "side": side,
+                "order_type": order_type,
                 "quantity": quantity,
                 "price": price,
                 "timestamp": int(time.time()),
@@ -44,6 +47,7 @@ class TradingService:
                 user_id=user_id,
                 symbol=symbol,
                 side=side,
+                order_type=order_type,
                 quantity=quantity,
                 price=price,
                 encrypted_data=json.dumps(encrypted_package),
@@ -60,7 +64,9 @@ class TradingService:
                 # Log security event
                 self.db.log_security_event(
                     "ORDER_CREATED",
-                    f"New {side} order for {quantity} {symbol} created",
+                    f"New {side} {order_type} order for {quantity} {symbol} created",
+                    user_id=user_id,
+                    resource="ORDER",
                     severity="INFO"
                 )
                 
@@ -220,6 +226,123 @@ class TradingService:
             print(f"[TRADING] Error searching trades: {str(e)}")
             return []
     
+    def execute_order(self, order_id: int) -> Dict[str, Any]:
+        """
+        Execute an order and create a transaction
+        """
+        try:
+            # Get order details
+            all_orders = self.db.get_all_orders()
+            order = None
+            for o in all_orders:
+                if o["id"] == order_id:
+                    order = o
+                    break
+            
+            if not order:
+                return {"success": False, "message": "Order not found"}
+            
+            if order["status"] == "FILLED":
+                return {"success": False, "message": "Order already filled"}
+            
+            # For demo purposes, we'll just execute the order
+            # In a real system, we'd match orders against a book
+            transaction_data = {
+                "order_id": order["id"],
+                "user_id": order["user_id"],
+                "symbol": order["symbol"],
+                "side": order["side"],
+                "quantity": order["quantity"],
+                "price": order["price"],
+                "total_value": order["quantity"] * order["price"],
+                "timestamp": int(time.time())
+            }
+            
+            # Encrypt transaction data
+            encrypted_package = self.crypto.encrypt_data(transaction_data)
+            
+            # Create digital signature
+            signature = self.crypto.sign_data(transaction_data)
+            
+            # Create Merkle leaf
+            merkle_leaf = self.crypto.create_merkle_leaf(transaction_data)
+            
+            # Create transaction in database
+            transaction_id = self.db.create_transaction(
+                order_id=order["id"],
+                user_id=order["user_id"],
+                symbol=order["symbol"],
+                side=order["side"],
+                quantity=order["quantity"],
+                price=order["price"],
+                total_value=transaction_data["total_value"],
+                encrypted_data=json.dumps(encrypted_package),
+                signature=signature,
+                merkle_leaf=merkle_leaf
+            )
+            
+            if transaction_id:
+                # Add to Merkle tree
+                self.db.add_merkle_leaf(merkle_leaf, f"TX-{transaction_id}")
+                
+                # Update order status
+                self.db.update_order_status(order_id, "FILLED")
+                
+                # Log security event
+                self.db.log_security_event(
+                    "TRANSACTION_EXECUTED",
+                    f"Order {order_id} executed: {order['side']} {order['quantity']} {order['symbol']} @ ${order['price']}",
+                    user_id=order["user_id"],
+                    resource="TRANSACTION",
+                    severity="INFO"
+                )
+                
+                # Update user portfolio
+                self.db.update_portfolio_after_transaction(
+                    user_id=order["user_id"],
+                    symbol=order["symbol"],
+                    quantity=order["quantity"],
+                    side=order["side"],
+                    price=order["price"]
+                )
+                
+                return {
+                    "success": True,
+                    "transaction_id": transaction_id,
+                    "message": "Order executed successfully"
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "Failed to create transaction"
+                }
+                
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Order execution failed: {str(e)}"
+            }
+    
+    def get_user_portfolio(self, user_id: int) -> List[Dict[str, Any]]:
+        """
+        Get user's portfolio holdings
+        """
+        try:
+            return self.db.get_user_portfolio(user_id)
+        except Exception as e:
+            print(f"[TRADING] Error getting user portfolio: {str(e)}")
+            return []
+    
+    def get_market_data(self, symbol: str = None) -> List[Dict[str, Any]]:
+        """
+        Get market data for all or specific symbol
+        """
+        try:
+            return self.db.get_market_data(symbol)
+        except Exception as e:
+            print(f"[TRADING] Error getting market data: {str(e)}")
+            return []
+    
     def decrypt_order(self, encrypted_data: str) -> Dict[str, Any]:
         """
         Decrypt order data (for authorized users only)
@@ -244,9 +367,7 @@ def get_trading_service():
     return trading_service
 
 def demo_trading_operations():
-    """
-    Demonstrate trading operations with real encryption
-    """
+    """Demonstrate trading operations with real encryption"""
     print("=== Trading Service Demo ===")
     
     # Get trading service
@@ -282,7 +403,7 @@ def demo_trading_operations():
         print(f"   Order ID: {sell_order['order_id']}")
         print(f"   Merkle Leaf: {sell_order['merkle_leaf'][:32]}...")
     
-    # Test getting user orders
+    # Test getting user order
     print("\n2. Retrieving User Orders from Database:")
     orders = ts.get_user_orders(12345)
     print(f"   Found {len(orders)} orders")
@@ -315,6 +436,19 @@ def demo_trading_operations():
     print(f"   Found {len(search_results)} results for 'BTC'")
     for result in search_results[:3]:
         print(f"   - #{result['id']}: {result['side'].upper()} {result['quantity']} {result['symbol']} @ ${result['price']}")
+    
+    # Test order execution
+    print("\n6. Executing Orders:")
+    if buy_order["success"]:
+        execution_result = ts.execute_order(buy_order["order_id"])
+        print(f"   Order execution: {execution_result['message']}")
+    
+    # Test portfolio
+    print("\n7. User Portfolio:")
+    portfolio = ts.get_user_portfolio(12345)
+    print(f"   User has {len(portfolio)} assets in portfolio")
+    for asset in portfolio:
+        print(f"   - {asset['symbol']}: {asset['quantity']} shares at avg ${asset['avg_buy_price']}")
     
     print("\n=== Trading Demo Completed ===")
 

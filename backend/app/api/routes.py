@@ -1,15 +1,16 @@
-from fastapi import APIRouter, HTTPException, Depends, Request, Header
+from fastapi import APIRouter, HTTPException, Depends, Request, Header, WebSocket
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 import json
 import time
 
 # Import platform components
-from backend.app.auth_service import get_auth_service
-from backend.app.trading_service import get_trading_service
-from backend.app.database import get_db_manager
-from backend.app.crypto_service import get_crypto_service
-from backend.app.security_service import get_security_service
+from backend.app.services.auth_service import get_auth_service
+from backend.app.services.trading_service import get_trading_service
+from backend.app.utils.database import get_db_manager
+from backend.app.services.crypto_service import get_crypto_service
+from backend.app.services.security_service import get_security_service
+from backend.app.services.websocket_service import manager, handle_websocket_messages
 
 # Create router
 router = APIRouter()
@@ -375,6 +376,72 @@ async def get_market_overview():
         }
     
     return {"market_data": market_data, "timestamp": int(time.time())}
+
+# Real-time data endpoints
+@router.get("/api/data/orders/latest")
+async def get_latest_orders(limit: int = 10):
+    """Get latest orders for real-time updates"""
+    trading_service = get_trading_service()
+    orders = trading_service.get_all_orders()
+    
+    # Return only the latest orders
+    latest_orders = orders[:limit] if len(orders) > limit else orders
+    
+    return {"orders": latest_orders, "count": len(latest_orders)}
+
+@router.get("/api/data/market/overview")
+async def get_market_overview():
+    """Get market overview data"""
+    trading_service = get_trading_service()
+    
+    # Get data for multiple symbols
+    symbols = ["BTC", "ETH", "ADA", "DOT", "SOL"]
+    market_data = {}
+    
+    for symbol in symbols:
+        order_book = trading_service.get_order_book(symbol)
+        vwap = trading_service.calculate_vwap(symbol)
+        
+        market_data[symbol] = {
+            "symbol": symbol,
+            "vwap": vwap,
+            "buy_orders": len(order_book["buy_orders"]),
+            "sell_orders": len(order_book["sell_orders"]),
+            "best_bid": order_book["buy_orders"][0]["price"] if order_book["buy_orders"] else 0,
+            "best_ask": order_book["sell_orders"][0]["price"] if order_book["sell_orders"] else 0
+        }
+    
+    return {"market_data": market_data, "timestamp": int(time.time())}
+
+@router.get("/api/data/portfolio/{user_id}")
+async def get_user_portfolio(user_id: int, current_user: dict = Depends(get_current_user)):
+    """Get user portfolio"""
+    # Verify user authorization
+    if current_user["id"] != user_id and current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to access this portfolio")
+    
+    trading_service = get_trading_service()
+    portfolio = trading_service.get_user_portfolio(user_id)
+    
+    return {"portfolio": portfolio}
+
+@router.get("/api/data/transactions/{user_id}")
+async def get_user_transactions(user_id: int, current_user: dict = Depends(get_current_user)):
+    """Get user transactions"""
+    # Verify user authorization
+    if current_user["id"] != user_id and current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to access these transactions")
+    
+    db = get_db_manager()
+    transactions = db.get_all_transactions(user_id)
+    
+    return {"transactions": transactions}
+
+# WebSocket endpoint for real-time updates
+@router.websocket("/ws/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: int):
+    """WebSocket endpoint for real-time updates"""
+    await handle_websocket_messages(websocket, user_id)
 
 # Health check endpoint
 @router.get("/api/health")

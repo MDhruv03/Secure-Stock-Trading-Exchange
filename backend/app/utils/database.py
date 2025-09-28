@@ -7,8 +7,8 @@ from datetime import datetime
 import os
 
 # Import key management
-from backend.app.key_management import get_key_manager
-from backend.app.crypto_service import get_crypto_service
+from backend.app.utils.key_management import get_key_manager
+from backend.app.services.crypto_service import get_crypto_service
 
 class DatabaseManager:
     """
@@ -38,7 +38,21 @@ class DatabaseManager:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_login TIMESTAMP,
                 failed_login_attempts INTEGER DEFAULT 0,
-                locked_until TIMESTAMP NULL
+                locked_until TIMESTAMP NULL,
+                balance REAL DEFAULT 10000.00,
+                is_active BOOLEAN DEFAULT TRUE
+            )
+        """)
+        
+        # Stocks table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS stocks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                current_price REAL NOT NULL,
+                market_cap REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
         
@@ -49,15 +63,40 @@ class DatabaseManager:
                 user_id INTEGER NOT NULL,
                 symbol TEXT NOT NULL,
                 side TEXT NOT NULL,
+                order_type TEXT NOT NULL DEFAULT 'MARKET',
                 quantity REAL NOT NULL,
                 price REAL NOT NULL,
+                status TEXT NOT NULL DEFAULT 'PENDING',
+                filled_quantity REAL DEFAULT 0.0,
                 encrypted_data TEXT NOT NULL,
                 signature TEXT NOT NULL,
                 merkle_leaf TEXT NOT NULL,
                 nonce TEXT NOT NULL,
                 tag TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        """)
+        
+        # Transactions table (executed trades)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                symbol TEXT NOT NULL,
+                side TEXT NOT NULL,
+                quantity REAL NOT NULL,
+                price REAL NOT NULL,
+                total_value REAL NOT NULL,
+                encrypted_data TEXT NOT NULL,
+                signature TEXT NOT NULL,
+                merkle_leaf TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'SUCCESS',
+                executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                FOREIGN KEY (order_id) REFERENCES orders (id)
             )
         """)
         
@@ -70,7 +109,10 @@ class DatabaseManager:
                 source_ip TEXT,
                 severity TEXT,
                 details TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                user_id INTEGER,
+                resource TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
             )
         """)
         
@@ -149,6 +191,52 @@ class DatabaseManager:
             )
         """)
         
+        # Portfolio table (user holdings)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS portfolio (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                symbol TEXT NOT NULL,
+                quantity REAL NOT NULL DEFAULT 0.0,
+                avg_buy_price REAL NOT NULL DEFAULT 0.0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        """)
+        
+        # Market data table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS market_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                open_price REAL,
+                high_price REAL,
+                low_price REAL,
+                close_price REAL,
+                volume REAL,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Initialize default stocks
+        default_stocks = [
+            ("BTC", "Bitcoin", 45000.00),
+            ("ETH", "Ethereum", 3200.00),
+            ("ADA", "Cardano", 0.50),
+            ("DOT", "Polkadot", 7.50),
+            ("SOL", "Solana", 100.00),
+            ("XRP", "Ripple", 0.55),
+            ("AVAX", "Avalanche", 35.00),
+            ("LINK", "Chainlink", 15.00),
+        ]
+        
+        for symbol, name, price in default_stocks:
+            cursor.execute("""
+                INSERT OR IGNORE INTO stocks (symbol, name, current_price)
+                VALUES (?, ?, ?)
+            """, (symbol, name, price))
+        
         conn.commit()
         conn.close()
         
@@ -194,7 +282,7 @@ class DatabaseManager:
             
             cursor.execute("""
                 SELECT id, username, password_hash, created_at, last_login, 
-                       failed_login_attempts, locked_until
+                       failed_login_attempts, locked_until, balance, is_active
                 FROM users
                 WHERE username = ?
             """, (username,))
@@ -210,12 +298,50 @@ class DatabaseManager:
                     "created_at": row[3],
                     "last_login": row[4],
                     "failed_login_attempts": row[5],
-                    "locked_until": row[6]
+                    "locked_until": row[6],
+                    "balance": row[7],
+                    "is_active": row[8]
                 }
             
             return None
         except Exception as e:
             print(f"[DB] Error getting user: {str(e)}")
+            return None
+
+    def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get user by user ID
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT id, username, password_hash, created_at, last_login, 
+                       failed_login_attempts, locked_until, balance, is_active
+                FROM users
+                WHERE id = ?
+            """, (user_id,))
+            
+            row = cursor.fetchone()
+            conn.close()
+            
+            if row:
+                return {
+                    "id": row[0],
+                    "username": row[1],
+                    "password_hash": row[2],
+                    "created_at": row[3],
+                    "last_login": row[4],
+                    "failed_login_attempts": row[5],
+                    "locked_until": row[6],
+                    "balance": row[7],
+                    "is_active": row[8]
+                }
+            
+            return None
+        except Exception as e:
+            print(f"[DB] Error getting user by ID: {str(e)}")
             return None
     
     def update_user_last_login(self, user_id: int) -> bool:
@@ -260,6 +386,28 @@ class DatabaseManager:
             return True
         except Exception as e:
             print(f"[DB] Error incrementing failed login attempts: {str(e)}")
+            return False
+
+    def reset_failed_login_attempts(self, username: str) -> bool:
+        """
+        Reset failed login attempts for a user after successful login
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                UPDATE users
+                SET failed_login_attempts = 0
+                WHERE username = ?
+            """, (username,))
+            
+            conn.commit()
+            conn.close()
+            
+            return True
+        except Exception as e:
+            print(f"[DB] Error resetting failed login attempts: {str(e)}")
             return False
     
     def lock_user_account(self, username: str, lock_duration_hours: int = 24) -> bool:
@@ -376,6 +524,58 @@ class DatabaseManager:
             print(f"[DB] Error getting user orders: {str(e)}")
             return []
     
+    def create_order(self, user_id: int, symbol: str, side: str, quantity: float, price: float,
+                    encrypted_data: str, signature: str, merkle_leaf: str, nonce: str, tag: str, 
+                    order_type: str = "MARKET") -> Optional[int]:
+        """
+        Create a new encrypted order
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                INSERT INTO orders (user_id, symbol, side, order_type, quantity, price, encrypted_data, signature, merkle_leaf, nonce, tag)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (user_id, symbol, side, order_type, quantity, price, encrypted_data, signature, merkle_leaf, nonce, tag))
+            
+            order_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            
+            # Log audit event
+            self.log_audit_event(user_id, "ORDER_CREATED", f"Order {order_id} created", {
+                "symbol": symbol, "side": side, "quantity": quantity, "price": price
+            })
+            
+            return order_id
+        except Exception as e:
+            print(f"[DB] Error creating order: {str(e)}")
+            conn.close()
+            return None
+
+    def update_order_status(self, order_id: int, status: str) -> bool:
+        """
+        Update order status
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                UPDATE orders
+                SET status = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (status, order_id))
+            
+            conn.commit()
+            conn.close()
+            
+            return True
+        except Exception as e:
+            print(f"[DB] Error updating order status: {str(e)}")
+            return False
+
     def get_all_orders(self) -> List[Dict[str, Any]]:
         """
         Get all orders (for admin view)
@@ -385,7 +585,8 @@ class DatabaseManager:
             cursor = conn.cursor()
             
             cursor.execute("""
-                SELECT o.id, u.username AS user_name, o.symbol, o.side, o.quantity, o.price, o.merkle_leaf, o.created_at
+                SELECT o.id, u.username AS user_name, o.symbol, o.side, o.order_type, o.quantity, o.price, 
+                       o.status, o.filled_quantity, o.merkle_leaf, o.created_at
                 FROM orders o
                 JOIN users u ON o.user_id = u.id
                 ORDER BY o.created_at DESC
@@ -401,36 +602,252 @@ class DatabaseManager:
                     "user_name": row[1],
                     "symbol": row[2],
                     "side": row[3],
-                    "quantity": row[4],
-                    "price": row[5],
-                    "merkle_leaf": row[6],
-                    "created_at": row[7]
+                    "order_type": row[4],
+                    "quantity": row[5],
+                    "price": row[6],
+                    "status": row[7],
+                    "filled_quantity": row[8],
+                    "merkle_leaf": row[9],
+                    "created_at": row[10]
                 })
             
             return orders
         except Exception as e:
             print(f"[DB] Error getting all orders: {str(e)}")
             return []
-    
-    def log_security_event(self, event_type: str, description: str, source_ip: str = None,
-                          severity: str = "INFO", details: str = None) -> bool:
+
+    def create_transaction(self, order_id: int, user_id: int, symbol: str, side: str, 
+                         quantity: float, price: float, total_value: float, 
+                         encrypted_data: str, signature: str, merkle_leaf: str) -> Optional[int]:
         """
-        Log a security event
+        Create a new transaction
         """
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
             cursor.execute("""
-                INSERT INTO security_events (event_type, description, source_ip, severity, details)
-                VALUES (?, ?, ?, ?, ?)
-            """, (event_type, description, source_ip, severity, details))
+                INSERT INTO transactions (order_id, user_id, symbol, side, quantity, price, total_value, 
+                                        encrypted_data, signature, merkle_leaf)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (order_id, user_id, symbol, side, quantity, price, total_value, encrypted_data, signature, merkle_leaf))
             
+            transaction_id = cursor.lastrowid
             conn.commit()
             conn.close()
             
-            print(f"[SECURITY] {severity} - {event_type}: {description} (IP: {source_ip})")
+            # Log audit event
+            self.log_audit_event(user_id, "TRANSACTION_CREATED", f"Transaction {transaction_id} created", {
+                "symbol": symbol, "side": side, "quantity": quantity, "price": price, "total_value": total_value
+            })
             
+            return transaction_id
+        except Exception as e:
+            print(f"[DB] Error creating transaction: {str(e)}")
+            conn.close()
+            return None
+
+    def update_portfolio_after_transaction(self, user_id: int, symbol: str, quantity: float, side: str, price: float) -> bool:
+        """
+        Update user's portfolio after a transaction
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Check if user already owns this symbol
+            cursor.execute("""
+                SELECT id, quantity, avg_buy_price
+                FROM portfolio
+                WHERE user_id = ? AND symbol = ?
+            """, (user_id, symbol))
+            
+            existing = cursor.fetchone()
+            
+            if existing:
+                # Update existing holdings
+                existing_id, existing_quantity, existing_avg_price = existing
+                if side == "buy":
+                    # Calculate new average price
+                    total_quantity = existing_quantity + quantity
+                    total_value = (existing_quantity * existing_avg_price) + (quantity * price)
+                    new_avg_price = total_value / total_quantity if total_quantity > 0 else 0.0
+                    
+                    cursor.execute("""
+                        UPDATE portfolio
+                        SET quantity = ?, avg_buy_price = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    """, (total_quantity, new_avg_price, existing_id))
+                else:  # sell
+                    new_quantity = existing_quantity - quantity
+                    if new_quantity < 0:
+                        new_quantity = 0  # Can't sell more than you own
+                    cursor.execute("""
+                        UPDATE portfolio
+                        SET quantity = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    """, (new_quantity, existing_id))
+            else:
+                # Create new holding (only for buy orders)
+                if side == "buy":
+                    cursor.execute("""
+                        INSERT INTO portfolio (user_id, symbol, quantity, avg_buy_price)
+                        VALUES (?, ?, ?, ?)
+                    """, (user_id, symbol, quantity, price))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"[DB] Error updating portfolio: {str(e)}")
+            conn.close()
+            return False
+
+    def get_user_portfolio(self, user_id: int) -> List[Dict[str, Any]]:
+        """
+        Get user's portfolio holdings
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT symbol, quantity, avg_buy_price, created_at, updated_at
+                FROM portfolio
+                WHERE user_id = ?
+                ORDER BY quantity DESC
+            """, (user_id,))
+            
+            rows = cursor.fetchall()
+            conn.close()
+            
+            portfolio = []
+            for row in rows:
+                portfolio.append({
+                    "symbol": row[0],
+                    "quantity": row[1],
+                    "avg_buy_price": row[2],
+                    "created_at": row[3],
+                    "updated_at": row[4]
+                })
+            
+            return portfolio
+        except Exception as e:
+            print(f"[DB] Error getting user portfolio: {str(e)}")
+            return []
+
+    def get_market_data(self, symbol: str = None) -> List[Dict[str, Any]]:
+        """
+        Get market data for all or specific symbol
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            if symbol:
+                cursor.execute("""
+                    SELECT symbol, name, current_price, market_cap, created_at
+                    FROM stocks
+                    WHERE symbol = ?
+                """, (symbol,))
+            else:
+                cursor.execute("""
+                    SELECT symbol, name, current_price, market_cap, created_at
+                    FROM stocks
+                    ORDER BY current_price DESC
+                """)
+            
+            rows = cursor.fetchall()
+            conn.close()
+            
+            stocks = []
+            for row in rows:
+                stocks.append({
+                    "symbol": row[0],
+                    "name": row[1],
+                    "current_price": row[2],
+                    "market_cap": row[3],
+                    "created_at": row[4]
+                })
+            
+            return stocks
+        except Exception as e:
+            print(f"[DB] Error getting market data: {str(e)}")
+            return []
+
+    def get_all_transactions(self, user_id: int = None) -> List[Dict[str, Any]]:
+        """
+        Get all transactions (for admin view) or for a specific user
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            if user_id:
+                cursor.execute("""
+                    SELECT t.id, t.order_id, u.username AS user_name, t.symbol, t.side, 
+                           t.quantity, t.price, t.total_value, t.status, t.executed_at
+                    FROM transactions t
+                    JOIN users u ON t.user_id = u.id
+                    WHERE t.user_id = ?
+                    ORDER BY t.executed_at DESC
+                """, (user_id,))
+            else:
+                cursor.execute("""
+                    SELECT t.id, t.order_id, u.username AS user_name, t.symbol, t.side, 
+                           t.quantity, t.price, t.total_value, t.status, t.executed_at
+                    FROM transactions t
+                    JOIN users u ON t.user_id = u.id
+                    ORDER BY t.executed_at DESC
+                """)
+            
+            rows = cursor.fetchall()
+            conn.close()
+            
+            transactions = []
+            for row in rows:
+                transactions.append({
+                    "id": row[0],
+                    "order_id": row[1],
+                    "user_name": row[2],
+                    "symbol": row[3],
+                    "side": row[4],
+                    "quantity": row[5],
+                    "price": row[6],
+                    "total_value": row[7],
+                    "status": row[8],
+                    "executed_at": row[9]
+                })
+            
+            return transactions
+        except Exception as e:
+            print(f"[DB] Error getting transactions: {str(e)}")
+            return []
+    
+    def log_security_event(self, event_type: str, description: str, source_ip: str = None,
+                          severity: str = "INFO", details: Dict[str, Any] = None) -> bool:
+        """
+        Log a security event
+        """
+        try:
+            import json
+            
+            # Serialize details to JSON string if it's a dictionary
+            details_str = json.dumps(details) if details else None
+            
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                INSERT INTO security_events (event_type, description, source_ip, severity, details)
+                VALUES (?, ?, ?, ?, ?)
+            """, (event_type, description, source_ip, severity, details_str))
+
+            conn.commit()
+            conn.close()
+
+            print(f"[SECURITY] {severity} - {event_type}: {description} (IP: {source_ip})")
+
             return True
         except Exception as e:
             print(f"[DB] Error logging security event: {str(e)}")
