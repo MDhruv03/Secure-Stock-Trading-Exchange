@@ -2,6 +2,7 @@ import os
 import hashlib
 import hmac
 import secrets
+import logging
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, padding, ec
@@ -303,6 +304,7 @@ class CryptoService:
         """
         Derive shared secret using ECDH
         """
+        import logging
         try:
             # Load peer's public key
             peer_public_key_obj = load_pem_public_key(peer_public_key, backend=default_backend())
@@ -322,7 +324,7 @@ class CryptoService:
             
             return key
         except Exception as e:
-            print(f"[CRYPTO] Error deriving shared secret: {str(e)}")
+            logging.error(f"Crypto error deriving shared secret: {str(e)}")
             return None
     
     def create_certificate(self, subject_name: str) -> Tuple[bytes, bytes]:

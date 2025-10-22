@@ -1,5 +1,6 @@
 import json
 import time
+import logging
 from typing import Dict, Any, List, Optional
 from backend.app.utils.database import get_db_manager
 from backend.app.services.crypto_service import get_crypto_service
@@ -112,13 +113,14 @@ class TradingService:
         """
         Get all orders (for admin view)
         """
+        import logging
         try:
             # Get all orders from database
             orders = self.db.get_all_orders()
             
             return orders
         except Exception as e:
-            print(f"[TRADING] Error getting all orders: {str(e)}")
+            logging.error(f"Trading service error getting all orders: {str(e)}")
             return []
     
     def get_order_book(self, symbol: str) -> Dict[str, List[Dict[str, Any]]]:

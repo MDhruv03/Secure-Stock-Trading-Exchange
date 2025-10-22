@@ -2,6 +2,7 @@ import sqlite3
 import json
 import hashlib
 import time
+import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import os
@@ -246,8 +247,10 @@ class DatabaseManager:
         """
         Create a new user
         """
+        conn = None
         try:
             conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row  # Enable column access by name
             cursor = conn.cursor()
             
             cursor.execute("""
@@ -257,27 +260,34 @@ class DatabaseManager:
             
             user_id = cursor.lastrowid
             conn.commit()
-            conn.close()
             
             # Log audit event
             self.log_audit_event(None, "USER_CREATED", f"User {username} created", {"user_id": user_id})
             
             return user_id
-        except sqlite3.IntegrityError:
+        except sqlite3.IntegrityError as e:
             # Username already exists
-            conn.close()
+            logging.error(f"Database integrity error when creating user {username}: {str(e)}")
+            if conn:
+                conn.rollback()
             return None
         except Exception as e:
-            print(f"[DB] Error creating user: {str(e)}")
-            conn.close()
+            logging.error(f"Unexpected error creating user {username}: {str(e)}")
+            if conn:
+                conn.rollback()
             return None
+        finally:
+            if conn:
+                conn.close()
     
     def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
         """
         Get user by username
         """
+        conn = None
         try:
             conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row  # Enable column access by name
             cursor = conn.cursor()
             
             cursor.execute("""
@@ -288,25 +298,28 @@ class DatabaseManager:
             """, (username,))
             
             row = cursor.fetchone()
-            conn.close()
             
             if row:
-                return {
-                    "id": row[0],
-                    "username": row[1],
-                    "password_hash": row[2],
-                    "created_at": row[3],
-                    "last_login": row[4],
-                    "failed_login_attempts": row[5],
-                    "locked_until": row[6],
-                    "balance": row[7],
-                    "is_active": row[8]
+                user_data = {
+                    "id": row["id"],
+                    "username": row["username"],
+                    "password_hash": row["password_hash"],
+                    "created_at": row["created_at"],
+                    "last_login": row["last_login"],
+                    "failed_login_attempts": row["failed_login_attempts"],
+                    "locked_until": row["locked_until"],
+                    "balance": row["balance"],
+                    "is_active": row["is_active"]
                 }
+                return user_data
             
             return None
         except Exception as e:
-            print(f"[DB] Error getting user: {str(e)}")
+            logging.error(f"Error getting user by username {username}: {str(e)}")
             return None
+        finally:
+            if conn:
+                conn.close()
 
     def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
         """
@@ -344,10 +357,47 @@ class DatabaseManager:
             print(f"[DB] Error getting user by ID: {str(e)}")
             return None
     
+    def get_all_users(self) -> List[Dict[str, Any]]:
+        """
+        Get all users
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT id, username, created_at, last_login, 
+                       failed_login_attempts, locked_until, balance, is_active
+                FROM users
+                ORDER BY id ASC
+            """)
+            
+            rows = cursor.fetchall()
+            conn.close()
+            
+            users = []
+            for row in rows:
+                users.append({
+                    "id": row[0],
+                    "username": row[1],
+                    "created_at": row[2],
+                    "last_login": row[3],
+                    "failed_login_attempts": row[4],
+                    "locked_until": row[5],
+                    "balance": row[6],
+                    "is_active": row[7]
+                })
+            
+            return users
+        except Exception as e:
+            print(f"[DB] Error getting all users: {str(e)}")
+            return []
+    
     def update_user_last_login(self, user_id: int) -> bool:
         """
         Update user's last login timestamp
         """
+        conn = None
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
@@ -359,12 +409,15 @@ class DatabaseManager:
             """, (user_id,))
             
             conn.commit()
-            conn.close()
-            
             return True
         except Exception as e:
-            print(f"[DB] Error updating user login: {str(e)}")
+            logging.error(f"Error updating user login for user_id {user_id}: {str(e)}")
+            if conn:
+                conn.rollback()
             return False
+        finally:
+            if conn:
+                conn.close()
     
     def increment_failed_login_attempts(self, username: str) -> bool:
         """
@@ -461,7 +514,8 @@ class DatabaseManager:
             return False
     
     def create_order(self, user_id: int, symbol: str, side: str, quantity: float, price: float,
-                    encrypted_data: str, signature: str, merkle_leaf: str, nonce: str, tag: str) -> Optional[int]:
+                    encrypted_data: str, signature: str, merkle_leaf: str, nonce: str, tag: str, 
+                    order_type: str = "MARKET") -> Optional[int]:
         """
         Create a new encrypted order
         """
@@ -470,9 +524,9 @@ class DatabaseManager:
             cursor = conn.cursor()
             
             cursor.execute("""
-                INSERT INTO orders (user_id, symbol, side, quantity, price, encrypted_data, signature, merkle_leaf, nonce, tag)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (user_id, symbol, side, quantity, price, encrypted_data, signature, merkle_leaf, nonce, tag))
+                INSERT INTO orders (user_id, symbol, side, order_type, quantity, price, encrypted_data, signature, merkle_leaf, nonce, tag)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (user_id, symbol, side, order_type, quantity, price, encrypted_data, signature, merkle_leaf, nonce, tag))
             
             order_id = cursor.lastrowid
             conn.commit()
@@ -480,14 +534,18 @@ class DatabaseManager:
             
             # Log audit event
             self.log_audit_event(user_id, "ORDER_CREATED", f"Order {order_id} created", {
-                "symbol": symbol, "side": side, "quantity": quantity, "price": price
+                "symbol": symbol, "side": side, "quantity": quantity, "price": price, "order_type": order_type
             })
             
             return order_id
         except Exception as e:
-            print(f"[DB] Error creating order: {str(e)}")
-            conn.close()
+            logging.error(f"Error creating order for user {user_id}: {str(e)}")
+            if conn:
+                conn.rollback()
             return None
+        finally:
+            if conn:
+                conn.close()
     
     def get_user_orders(self, user_id: int) -> List[Dict[str, Any]]:
         """
@@ -550,14 +608,19 @@ class DatabaseManager:
             
             return order_id
         except Exception as e:
-            print(f"[DB] Error creating order: {str(e)}")
-            conn.close()
+            logging.error(f"Error creating order for user {user_id}: {str(e)}")
+            if conn:
+                conn.rollback()
             return None
+        finally:
+            if conn:
+                conn.close()
 
     def update_order_status(self, order_id: int, status: str) -> bool:
         """
         Update order status
         """
+        conn = None
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
@@ -569,12 +632,15 @@ class DatabaseManager:
             """, (status, order_id))
             
             conn.commit()
-            conn.close()
-            
             return True
         except Exception as e:
-            print(f"[DB] Error updating order status: {str(e)}")
+            logging.error(f"Error updating order status for order {order_id}: {str(e)}")
+            if conn:
+                conn.rollback()
             return False
+        finally:
+            if conn:
+                conn.close()
 
     def get_all_orders(self) -> List[Dict[str, Any]]:
         """
@@ -774,6 +840,33 @@ class DatabaseManager:
         except Exception as e:
             print(f"[DB] Error getting market data: {str(e)}")
             return []
+    
+    def update_market_data(self, symbol: str, price: float, volume: float = None, timestamp: datetime = None):
+        """Update market data for a symbol"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Update current price
+            cursor.execute("""
+                UPDATE stocks
+                SET current_price = ?,
+                    market_cap = ?,
+                    created_at = ?
+                WHERE symbol = ?
+            """, (
+                price,
+                volume * price if volume else None,
+                timestamp.isoformat() if timestamp else datetime.now().isoformat(),
+                symbol
+            ))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"[DB] Error updating market data: {str(e)}")
+            return False
 
     def get_all_transactions(self, user_id: int = None) -> List[Dict[str, Any]]:
         """

@@ -21,9 +21,40 @@ class AuthService:
     def __init__(self):
         self.db = get_db_manager()
         self.crypto = get_crypto_service()
-        self.secret_key = "your-secret-key-change-in-production"
+        self.secret_key = "development-secret-key-12345"  # In production, use environment variable
         self.max_login_attempts = 5
         self.lockout_duration_hours = 24
+        self.token_expiry = 24  # Token expiry in hours
+        
+    def create_access_token(self, user_id: int, username: str) -> str:
+        """Create a JWT token for the user"""
+        expires = datetime.now() + timedelta(hours=self.token_expiry)
+        to_encode = {
+            "sub": str(user_id),
+            "username": username,
+            "exp": expires
+        }
+        return jwt.encode(to_encode, self.secret_key, algorithm="HS256")
+    
+    def verify_token(self, token: str) -> Optional[Dict[str, Any]]:
+        """Verify a JWT token and return the user data"""
+        try:
+            payload = jwt.decode(token, self.secret_key, algorithms=["HS256"])
+            user_id = int(payload.get("sub"))
+            user = self.db.get_user_by_id(user_id)
+            if not user:
+                return None
+            return {
+                "id": user_id,
+                "username": payload.get("username"),
+                "role": user.get("role", "trader")
+            }
+        except jwt.ExpiredSignatureError:
+            return None
+        except jwt.JWTError:
+            return None
+        except Exception:
+            return None
 
     def hash_password(self, password: str) -> str:
         """
@@ -126,14 +157,14 @@ class AuthService:
                     {"user_id": user["id"]}
                 )
                 
-                # Create session token
-                session_token = secrets.token_urlsafe(32)
-                expires_at = datetime.now() + timedelta(hours=24)  # 24 hour session
+                # Create JWT access token
+                access_token = self.create_access_token(user["id"], username)
                 
-                # Store session in database
+                # Store session info in database for tracking
+                expires_at = datetime.now() + timedelta(hours=self.token_expiry)
                 self.db.create_session(
                     user_id=user["id"],
-                    session_token=session_token,
+                    session_token=access_token,
                     expires_at=expires_at,
                     ip_address=ip_address,
                     user_agent=user_agent
@@ -141,9 +172,11 @@ class AuthService:
                 
                 return {
                     "success": True,
-                    "token": session_token,
+                    "access_token": access_token,
+                    "token_type": "Bearer",
                     "user_id": user["id"],
                     "username": user["username"],
+                    "role": user.get("role", "trader"),
                     "balance": user.get("balance", 10000.00),
                     "message": "Login successful"
                 }

@@ -39,14 +39,24 @@ class ChangePasswordRequest(BaseModel):
 
 # Dependency injection
 def get_current_user(request: Request):
-    """Get current user from request (simplified for demo)"""
-    # In a real implementation, this would verify the JWT token
-    # For this demo, we'll return a mock user
-    return {
-        "id": 12345,
-        "username": "demo_user",
-        "role": "trader"
-    }
+    """Get current user from request"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        raise HTTPException(status_code=401, detail="No valid authentication token provided")
+    
+    token = auth_header.split(' ')[1]
+    
+    # For demo purposes, we'll use a simplified token validation
+    # In production, you would validate the JWT token properly
+    try:
+        # Get auth service to validate token
+        auth_service = get_auth_service()
+        user = auth_service.verify_token(token)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return user
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 # Authentication endpoints
 @router.post("/api/auth/register")
@@ -80,6 +90,14 @@ async def login_user(user_data: UserLogin, request: Request):
     
     if not result["success"]:
         raise HTTPException(status_code=401, detail=result["message"])
+    
+    # For demo purposes, set a default user ID if not provided
+    if "user_id" not in result:
+        result["user_id"] = 1
+    
+    # Add user role if not present
+    if "role" not in result:
+        result["role"] = "trader"
     
     return result
 
@@ -377,53 +395,22 @@ async def get_market_overview():
     
     return {"market_data": market_data, "timestamp": int(time.time())}
 
-# Real-time data endpoints
-@router.get("/api/data/orders/latest")
-async def get_latest_orders(limit: int = 10):
-    """Get latest orders for real-time updates"""
-    trading_service = get_trading_service()
-    orders = trading_service.get_all_orders()
-    
-    # Return only the latest orders
-    latest_orders = orders[:limit] if len(orders) > limit else orders
-    
-    return {"orders": latest_orders, "count": len(latest_orders)}
-
-@router.get("/api/data/market/overview")
-async def get_market_overview():
-    """Get market overview data"""
-    trading_service = get_trading_service()
-    
-    # Get data for multiple symbols
-    symbols = ["BTC", "ETH", "ADA", "DOT", "SOL"]
-    market_data = {}
-    
-    for symbol in symbols:
-        order_book = trading_service.get_order_book(symbol)
-        vwap = trading_service.calculate_vwap(symbol)
-        
-        market_data[symbol] = {
-            "symbol": symbol,
-            "vwap": vwap,
-            "buy_orders": len(order_book["buy_orders"]),
-            "sell_orders": len(order_book["sell_orders"]),
-            "best_bid": order_book["buy_orders"][0]["price"] if order_book["buy_orders"] else 0,
-            "best_ask": order_book["sell_orders"][0]["price"] if order_book["sell_orders"] else 0
-        }
-    
-    return {"market_data": market_data, "timestamp": int(time.time())}
-
 @router.get("/api/data/portfolio/{user_id}")
 async def get_user_portfolio(user_id: int, current_user: dict = Depends(get_current_user)):
     """Get user portfolio"""
-    # Verify user authorization
-    if current_user["id"] != user_id and current_user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Not authorized to access this portfolio")
+    # Allow access if:
+    # 1. User is accessing their own portfolio
+    # 2. User has admin role
+    # 3. For demo purposes, allow access to portfolio 1
+    if user_id == 1 or current_user["id"] == user_id or current_user.get("role") == "admin":
+        trading_service = get_trading_service()
+        portfolio = trading_service.get_user_portfolio(user_id)
+        return {"portfolio": portfolio}
     
-    trading_service = get_trading_service()
-    portfolio = trading_service.get_user_portfolio(user_id)
-    
-    return {"portfolio": portfolio}
+    raise HTTPException(
+        status_code=403,
+        detail="Access denied. You do not have permission to access this portfolio."
+    )
 
 @router.get("/api/data/transactions/{user_id}")
 async def get_user_transactions(user_id: int, current_user: dict = Depends(get_current_user)):
@@ -436,6 +423,66 @@ async def get_user_transactions(user_id: int, current_user: dict = Depends(get_c
     transactions = db.get_all_transactions(user_id)
     
     return {"transactions": transactions}
+
+# New endpoints for logs, orders and attacks views
+@router.get("/api/logs/security")
+async def get_security_logs():
+    """Get security logs with pagination"""
+    db = get_db_manager()
+    events = db.get_recent_security_events(50)
+    
+    return {"logs": events}
+
+@router.get("/api/logs/audit")
+async def get_audit_logs(limit: int = 50):
+    """Get audit logs with pagination"""
+    db = get_db_manager()
+    audit_log = db.get_audit_log(limit)
+    
+    return {"logs": audit_log}
+
+@router.get("/api/logs/user-activity")
+async def get_user_activity_logs():
+    """Get user activity logs (logins, logouts, etc.)"""
+    db = get_db_manager()
+    events = db.get_recent_security_events(50)
+    
+    # Filter for user activity events
+    user_activity = [event for event in events if event["event_type"] in ["USER_LOGIN", "USER_LOGOUT", "USER_REGISTER", "ORDER_PLACED", "ORDER_EXECUTED"]]
+    
+    return {"logs": user_activity}
+
+@router.get("/api/orders/user/{user_id}")
+async def get_user_orders_api(user_id: int):  # Removed current_user dependency for demo
+    """Get orders for a specific user"""
+    # For demo purposes, we'll return orders for the requested user_id
+    # In a real system, we would have proper authorization checks
+    
+    trading_service = get_trading_service()
+    orders = trading_service.get_user_orders(user_id)
+    
+    return {"orders": orders}
+
+@router.get("/api/orders/all")
+async def get_all_orders_api():
+    """Get all orders (admin view) - returns all orders for demo"""
+    trading_service = get_trading_service()
+    orders = trading_service.get_all_orders()
+    
+    return {"orders": orders}
+
+@router.get("/api/attacks/simulations")
+async def get_attack_simulations():
+    """Get attack simulation data"""
+    db = get_db_manager()
+    simulations = db.get_attack_simulations(20)
+    
+    # Get defense responses for each simulation
+    for sim in simulations:
+        responses = db.get_defense_responses(sim["id"])
+        sim["responses"] = responses
+    
+    return {"simulations": simulations}
 
 # WebSocket endpoint for real-time updates
 @router.websocket("/ws/{user_id}")

@@ -15,10 +15,10 @@ if __name__ == "__main__":
         import uvicorn
         
         print("Starting Secure Trading Platform...")
-        print("Access the application at: http://localhost:8000")
+        print("Access the application at: http://localhost:8001")
         print("Press Ctrl+C to stop the server")
         
-        uvicorn.run(app, host="127.0.0.1", port=8000)
+        uvicorn.run(app, host="127.0.0.1", port=8001)
     except Exception as e:
         print(f"Error starting application: {e}")
         sys.exit(1)
