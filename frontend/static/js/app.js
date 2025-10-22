@@ -523,41 +523,63 @@ class SecureTradingApp {
         }
     }
 
-    // Load dashboard data
+    // Load dashboard data (all stats dynamic)
     async loadDashboardData() {
         try {
-            const [marketData, orders, securityEvents, portfolio] = await Promise.allSettled([
+            const [marketData, orders, securityEvents, portfolio, stats] = await Promise.allSettled([
                 apiClient.getMarketOverview(),
                 apiClient.getUserOrders(),
                 apiClient.getSecurityEvents(),
-                apiClient.getUserPortfolio(this.userId)
+                apiClient.getUserPortfolio(this.userId),
+                apiClient.request('/api/data/stats')
             ]);
-            
+
             // Update market data table
             if (marketData.status === 'fulfilled' && marketData.value && marketData.value.market_data) {
                 this.updateMarketTable(marketData.value.market_data);
             }
-            
+
             // Update recent orders table
             if (orders.status === 'fulfilled' && orders.value && orders.value.orders) {
                 this.updateRecentOrdersTable(orders.value.orders);
             }
-            
+
             // Update security events
             if (securityEvents.status === 'fulfilled' && securityEvents.value && securityEvents.value.events) {
                 this.updateSecurityEvents(securityEvents.value.events);
             }
-            
+
             // Update portfolio info
             if (portfolio.status === 'fulfilled' && portfolio.value && portfolio.value.portfolio) {
                 this.updatePortfolioInfo(portfolio.value.portfolio);
             }
-            
+
+            // Update dashboard stats
+            if (stats.status === 'fulfilled' && stats.value) {
+                this.updateDashboardStats(stats.value);
+            }
+
             // Update system status
             this.updateSystemStatus();
         } catch (error) {
             console.error('Error loading dashboard data:', error);
         }
+    }
+    // Update dashboard stats (orders today, active users, system load, response time, 24h change, performance)
+    updateDashboardStats(stats) {
+        const ordersToday = domUtils.getElement('stats-orders-today');
+        const activeUsers = domUtils.getElement('stats-active-users');
+        const systemLoad = domUtils.getElement('stats-system-load');
+        const responseTime = domUtils.getElement('stats-response-time');
+        const change = domUtils.getElement('dashboard-24h-change');
+        const performance = domUtils.getElement('dashboard-performance');
+
+        if (ordersToday && stats.orders_today !== undefined) ordersToday.textContent = stats.orders_today;
+        if (activeUsers && stats.active_users !== undefined) activeUsers.textContent = stats.active_users;
+        if (systemLoad && stats.system_load !== undefined) systemLoad.textContent = stats.system_load;
+        if (responseTime && stats.response_time !== undefined) responseTime.textContent = stats.response_time + 'ms';
+        if (change && stats.change_24h !== undefined) change.textContent = (stats.change_24h >= 0 ? '+' : '') + numberUtils.formatPercentage(stats.change_24h, 2);
+        if (performance && stats.performance !== undefined) performance.textContent = stats.performance;
     }
 
     // Update market data table
@@ -822,41 +844,104 @@ class SecureTradingApp {
         console.log('Crypto demo view loaded');
     }
 
-    // Load logs data
+    // Load logs data (all tabs)
     async loadLogsData() {
         try {
-            const userLogs = await apiClient.getUserActivityLogs();
+            // Load all logs in parallel
+            const [userLogs, securityLogs, auditLogs] = await Promise.all([
+                apiClient.getUserActivityLogs(),
+                apiClient.getSecurityLogs(),
+                apiClient.getAuditLogs(50)
+            ]);
+
             if (userLogs && userLogs.logs) {
                 this.updateUserLogsTable(userLogs.logs);
+            }
+            if (securityLogs && securityLogs.logs) {
+                this.updateSecurityLogsTable(securityLogs.logs);
+            }
+            if (auditLogs && auditLogs.logs) {
+                this.updateAuditLogsTable(auditLogs.logs);
             }
         } catch (error) {
             console.error('Error loading logs data:', error);
         }
     }
 
-    // Update user logs table
+    // Update user logs table (limit to 10 latest)
     updateUserLogsTable(logs) {
         const tbody = domUtils.getElement('user-logs-table');
         if (!tbody) return;
-        
+
         tbody.innerHTML = '';
-        
+
         if (!logs || logs.length === 0) {
             tbody.innerHTML = '<tr><td colspan="4" class="py-2 text-center text-gray-400">No logs available</td></tr>';
             return;
         }
-        
-        logs.forEach(log => {
+
+        logs.slice(0, 10).forEach(log => {
             const tr = document.createElement('tr');
             tr.className = 'border-b border-gray-800';
-            
+
             tr.innerHTML = `
                 <td class="py-2 text-green-400">${log.id || 'N/A'}</td>
                 <td class="py-2 text-blue-400">${log.event_type || 'N/A'}</td>
                 <td class="py-2">${log.description || 'N/A'}</td>
                 <td class="py-2">${dateUtils.formatDateTime(log.created_at || new Date())}</td>
             `;
-            
+
+            tbody.appendChild(tr);
+        });
+    }
+
+    // Update security logs table (limit to 10 latest)
+    updateSecurityLogsTable(logs) {
+        const tbody = domUtils.getElement('security-logs-table');
+        if (!tbody) return;
+
+        tbody.innerHTML = '';
+
+        if (!logs || logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="py-2 text-center text-gray-400">No security logs available</td></tr>';
+            return;
+        }
+
+        logs.slice(0, 10).forEach(log => {
+            const tr = document.createElement('tr');
+            tr.className = 'border-b border-gray-800';
+            tr.innerHTML = `
+                <td class="py-2 text-green-400">${log.id || 'N/A'}</td>
+                <td class="py-2 text-blue-400">${log.event_type || 'N/A'}</td>
+                <td class="py-2">${log.description || 'N/A'}</td>
+                <td class="py-2">${dateUtils.formatDateTime(log.created_at || new Date())}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // Update audit logs table (limit to 10 latest, use correct fields)
+    updateAuditLogsTable(logs) {
+        const tbody = domUtils.getElement('audit-logs-table');
+        if (!tbody) return;
+
+        tbody.innerHTML = '';
+
+        if (!logs || logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="py-2 text-center text-gray-400">No audit logs available</td></tr>';
+            return;
+        }
+
+        logs.slice(0, 10).forEach(log => {
+            const tr = document.createElement('tr');
+            tr.className = 'border-b border-gray-800';
+            tr.innerHTML = `
+                <td class="py-2 text-green-400">${log.id || 'N/A'}</td>
+                <td class="py-2 text-blue-400">${log.action || 'N/A'}</td>
+                <td class="py-2">${log.resource || 'N/A'}</td>
+                <td class="py-2">${dateUtils.formatDateTime(log.timestamp || new Date())}</td>
+                <td class="py-2 text-gray-400 text-xs">${log.details ? (typeof log.details === 'object' ? JSON.stringify(log.details) : log.details) : ''}</td>
+            `;
             tbody.appendChild(tr);
         });
     }
@@ -1123,7 +1208,7 @@ class SecureTradingApp {
         const userLogsTab = domUtils.getElement('user-logs-tab');
         const securityLogsTab = domUtils.getElement('security-logs-tab');
         const auditLogsTab = domUtils.getElement('audit-logs-tab');
-        
+
         if (userLogsTab) {
             userLogsTab.addEventListener('click', () => this.switchLogsTab('user-logs'));
         }
@@ -1133,21 +1218,33 @@ class SecureTradingApp {
         if (auditLogsTab) {
             auditLogsTab.addEventListener('click', () => this.switchLogsTab('audit-logs'));
         }
+
+        // Show only user logs by default
+        this.switchLogsTab('user-logs');
     }
 
-    // Switch logs tabs
+    // Switch logs tabs (show only selected section)
     switchLogsTab(tabName) {
         const userLogsTab = domUtils.getElement('user-logs-tab');
         const securityLogsTab = domUtils.getElement('security-logs-tab');
         const auditLogsTab = domUtils.getElement('audit-logs-tab');
-        
+
         const activeClass = 'px-4 py-2 bg-green-500 text-black rounded-md';
         const inactiveClass = 'px-4 py-2 bg-gray-700 text-green-400 rounded-md';
-        
+
         if (userLogsTab) userLogsTab.className = tabName === 'user-logs' ? activeClass : inactiveClass;
         if (securityLogsTab) securityLogsTab.className = tabName === 'security-logs' ? activeClass : inactiveClass;
         if (auditLogsTab) auditLogsTab.className = tabName === 'audit-logs' ? activeClass : inactiveClass;
-        
+
+        // Show/hide log tables
+        const userLogsSection = domUtils.getElement('user-logs-table')?.closest('.bg-gray-900');
+        const securityLogsSection = domUtils.getElement('security-logs-table')?.closest('.bg-gray-900');
+        const auditLogsSection = domUtils.getElement('audit-logs-table')?.closest('.bg-gray-900');
+
+        if (userLogsSection) userLogsSection.style.display = tabName === 'user-logs' ? '' : 'none';
+        if (securityLogsSection) securityLogsSection.style.display = tabName === 'security-logs' ? '' : 'none';
+        if (auditLogsSection) auditLogsSection.style.display = tabName === 'audit-logs' ? '' : 'none';
+
         // Load data for the specific tab
         switch(tabName) {
             case 'user-logs':
