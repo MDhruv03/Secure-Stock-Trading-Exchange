@@ -12,6 +12,13 @@ from backend.app.services.crypto_service import get_crypto_service
 import sqlite3
 
 
+from backend.app.config import (
+    ACCESS_TOKEN_EXPIRE_MINUTES, 
+    SECRET_KEY, 
+    MAX_LOGIN_ATTEMPTS, 
+    BLOCK_DURATION_HOURS
+)
+
 class AuthService:
     """
     Authentication Service for the Secure Trading Platform
@@ -21,14 +28,15 @@ class AuthService:
     def __init__(self):
         self.db = get_db_manager()
         self.crypto = get_crypto_service()
-        self.secret_key = "development-secret-key-12345"  # In production, use environment variable
-        self.max_login_attempts = 5
-        self.lockout_duration_hours = 24
-        self.token_expiry = 24  # Token expiry in hours
+        # Use SECRET_KEY from config (environment variable or fallback)
+        self.secret_key = SECRET_KEY
+        self.max_login_attempts = MAX_LOGIN_ATTEMPTS
+        self.lockout_duration_hours = BLOCK_DURATION_HOURS
+        self.token_expiry_minutes = ACCESS_TOKEN_EXPIRE_MINUTES
         
     def create_access_token(self, user_id: int, username: str) -> str:
         """Create a JWT token for the user"""
-        expires = datetime.now() + timedelta(hours=self.token_expiry)
+        expires = datetime.now() + timedelta(minutes=self.token_expiry_minutes)
         to_encode = {
             "sub": str(user_id),
             "username": username,
@@ -161,7 +169,7 @@ class AuthService:
                 access_token = self.create_access_token(user["id"], username)
                 
                 # Store session info in database for tracking
-                expires_at = datetime.now() + timedelta(hours=self.token_expiry)
+                expires_at = datetime.now() + timedelta(minutes=self.token_expiry_minutes)
                 self.db.create_session(
                     user_id=user["id"],
                     session_token=access_token,
@@ -229,11 +237,12 @@ class AuthService:
                     "USER_LOGOUT",
                     f"User logged out: {user_id}",
                     severity="INFO",
-                    user_id=user_id
+                    details={"user_id": user_id}
                 )
             
             return success
-        except Exception:
+        except Exception as e:
+            print(f"[AUTH] Error during logout: {str(e)}")
             return False
     
     def change_password(self, user_id: int, old_password: str, new_password: str) -> Dict[str, Any]:

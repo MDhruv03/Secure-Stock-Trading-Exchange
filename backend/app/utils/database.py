@@ -220,6 +220,36 @@ class DatabaseManager:
             )
         """)
         
+        # Create indexes for performance optimization
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_symbol ON orders(symbol)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at)")
+        
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_order_id ON transactions(order_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_symbol ON transactions(symbol)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_executed_at ON transactions(executed_at)")
+        
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_security_events_event_type ON security_events(event_type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_security_events_user_id ON security_events(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_security_events_created_at ON security_events(created_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_security_events_severity ON security_events(severity)")
+        
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(session_token)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_sessions_expires_at ON user_sessions(expires_at)")
+        
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_portfolio_user_id ON portfolio(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_portfolio_symbol ON portfolio(symbol)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_portfolio_user_symbol ON portfolio(user_id, symbol)")
+        
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_user_id ON audit_log(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp)")
+        
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_blocked_ips_ip_address ON blocked_ips(ip_address)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_blocked_ips_blocked_until ON blocked_ips(blocked_until)")
+        
         # Initialize default stocks
         default_stocks = [
             ("BTC", "Bitcoin", 45000.00),
@@ -769,38 +799,63 @@ class DatabaseManager:
             conn.close()
             return False
 
-    def get_user_portfolio(self, user_id: int) -> List[Dict[str, Any]]:
+    def get_user_portfolio(self, user_id: int) -> Dict[str, Any]:
         """
-        Get user's portfolio holdings
+        Get user's portfolio holdings with enriched data
         """
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
+            # Get portfolio holdings
             cursor.execute("""
-                SELECT symbol, quantity, avg_buy_price, created_at, updated_at
-                FROM portfolio
-                WHERE user_id = ?
-                ORDER BY quantity DESC
+                SELECT p.symbol, p.quantity, p.avg_buy_price, p.created_at, p.updated_at,
+                       s.current_price, s.name
+                FROM portfolio p
+                LEFT JOIN stocks s ON p.symbol = s.symbol
+                WHERE p.user_id = ? AND p.quantity > 0
+                ORDER BY p.quantity * COALESCE(s.current_price, p.avg_buy_price) DESC
             """, (user_id,))
             
             rows = cursor.fetchall()
             conn.close()
             
-            portfolio = []
+            assets = []
+            total_value = 0
+            
             for row in rows:
-                portfolio.append({
-                    "symbol": row[0],
-                    "quantity": row[1],
-                    "avg_buy_price": row[2],
+                symbol = row[0]
+                quantity = row[1]
+                avg_buy_price = row[2]
+                current_price = row[5] if row[5] is not None else avg_buy_price
+                
+                # Calculate total value for this asset
+                asset_total_value = quantity * current_price
+                total_value += asset_total_value
+                
+                # Calculate 24h change (simplified - using difference from avg buy price)
+                change = ((current_price - avg_buy_price) / avg_buy_price * 100) if avg_buy_price > 0 else 0
+                
+                assets.append({
+                    "symbol": symbol,
+                    "name": row[6] if row[6] else symbol,
+                    "quantity": quantity,
+                    "avg_buy_price": avg_buy_price,
+                    "price": current_price,
+                    "total_value": asset_total_value,
+                    "change": change,
                     "created_at": row[3],
                     "updated_at": row[4]
                 })
             
-            return portfolio
+            return {
+                "assets": assets,
+                "total_value": total_value,
+                "asset_count": len(assets)
+            }
         except Exception as e:
             print(f"[DB] Error getting user portfolio: {str(e)}")
-            return []
+            return {"assets": [], "total_value": 0, "asset_count": 0}
 
     def get_market_data(self, symbol: str = None) -> List[Dict[str, Any]]:
         """
@@ -979,6 +1034,45 @@ class DatabaseManager:
             return events
         except Exception as e:
             print(f"[DB] Error getting security events: {str(e)}")
+            return []
+    
+    def get_security_events_by_type(self, event_types: List[str], limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Get security events filtered by event type(s)
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Create placeholders for the IN clause
+            placeholders = ','.join(['?' for _ in event_types])
+            
+            cursor.execute(f"""
+                SELECT id, event_type, description, source_ip, severity, details, created_at
+                FROM security_events
+                WHERE event_type IN ({placeholders})
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (*event_types, limit))
+            
+            rows = cursor.fetchall()
+            conn.close()
+            
+            events = []
+            for row in rows:
+                events.append({
+                    "id": row[0],
+                    "event_type": row[1],
+                    "description": row[2],
+                    "source_ip": row[3],
+                    "severity": row[4],
+                    "details": row[5],
+                    "created_at": row[6]
+                })
+            
+            return events
+        except Exception as e:
+            print(f"[DB] Error getting security events by type: {str(e)}")
             return []
     
     def add_merkle_leaf(self, leaf_hash: str, transaction_id: str) -> bool:
@@ -1389,6 +1483,234 @@ class DatabaseManager:
         except Exception as e:
             print(f"[DB] Error invalidating session: {str(e)}")
             return False
+    
+    # ==========================================
+    # Order Matching Engine Support Methods
+    # ==========================================
+    
+    def get_pending_orders_by_symbol(self, symbol: str) -> List[Dict[str, Any]]:
+        """Get all pending orders for a specific symbol"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT id, user_id, symbol, side, order_type, quantity, price, status, 
+                       filled_quantity, created_at
+                FROM orders
+                WHERE symbol = ? AND status = 'PENDING'
+                ORDER BY created_at ASC
+            """, (symbol,))
+            
+            rows = cursor.fetchall()
+            conn.close()
+            
+            orders = []
+            for row in rows:
+                orders.append({
+                    "id": row[0],
+                    "user_id": row[1],
+                    "symbol": row[2],
+                    "side": row[3],
+                    "order_type": row[4],
+                    "quantity": row[5],
+                    "price": row[6],
+                    "status": row[7],
+                    "filled_quantity": row[8] or 0.0,
+                    "created_at": row[9]
+                })
+            
+            return orders
+        except Exception as e:
+            print(f"[DB] Error getting pending orders: {str(e)}")
+            return []
+    
+    def get_symbols_with_pending_orders(self) -> List[str]:
+        """Get list of symbols that have pending orders"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT DISTINCT symbol
+                FROM orders
+                WHERE status = 'PENDING'
+            """)
+            
+            rows = cursor.fetchall()
+            conn.close()
+            
+            return [row[0] for row in rows]
+        except Exception as e:
+            print(f"[DB] Error getting symbols with pending orders: {str(e)}")
+            return []
+    
+    def update_order_status(self, order_id: int, status: str, filled_quantity: float):
+        """Update order status and filled quantity"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                UPDATE orders
+                SET status = ?, filled_quantity = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (status, filled_quantity, order_id))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"[DB] Error updating order status: {str(e)}")
+            return False
+    
+    def add_to_portfolio(self, user_id: int, symbol: str, quantity: float, avg_price: float):
+        """Add or update portfolio position"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Check if position exists
+            cursor.execute("""
+                SELECT id, quantity, avg_buy_price
+                FROM portfolio
+                WHERE user_id = ? AND symbol = ?
+            """, (user_id, symbol))
+            
+            existing = cursor.fetchone()
+            
+            if existing:
+                # Update existing position
+                existing_qty = existing[1]
+                existing_avg = existing[2]
+                
+                # Calculate new average price
+                total_cost = (existing_qty * existing_avg) + (quantity * avg_price)
+                new_qty = existing_qty + quantity
+                new_avg = total_cost / new_qty if new_qty > 0 else 0
+                
+                cursor.execute("""
+                    UPDATE portfolio
+                    SET quantity = ?, avg_buy_price = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (new_qty, new_avg, existing[0]))
+            else:
+                # Create new position
+                cursor.execute("""
+                    INSERT INTO portfolio (user_id, symbol, quantity, avg_buy_price)
+                    VALUES (?, ?, ?, ?)
+                """, (user_id, symbol, quantity, avg_price))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"[DB] Error adding to portfolio: {str(e)}")
+            return False
+    
+    def remove_from_portfolio(self, user_id: int, symbol: str, quantity: float):
+        """Remove quantity from portfolio position"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Get current position
+            cursor.execute("""
+                SELECT id, quantity
+                FROM portfolio
+                WHERE user_id = ? AND symbol = ?
+            """, (user_id, symbol))
+            
+            existing = cursor.fetchone()
+            
+            if existing:
+                new_qty = existing[1] - quantity
+                
+                if new_qty <= 0:
+                    # Remove position if quantity is 0 or negative
+                    cursor.execute("DELETE FROM portfolio WHERE id = ?", (existing[0],))
+                else:
+                    # Update quantity
+                    cursor.execute("""
+                        UPDATE portfolio
+                        SET quantity = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    """, (new_qty, existing[0]))
+                
+                conn.commit()
+                conn.close()
+                return True
+            else:
+                print(f"[DB] Warning: No portfolio position found for user {user_id}, symbol {symbol}")
+                conn.close()
+                return False
+        except Exception as e:
+            print(f"[DB] Error removing from portfolio: {str(e)}")
+            return False
+    
+    def update_user_balance(self, user_id: int, amount: float):
+        """Update user balance (can be positive or negative)"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                UPDATE users
+                SET balance = balance + ?
+                WHERE id = ?
+            """, (amount, user_id))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"[DB] Error updating user balance: {str(e)}")
+            return False
+    
+    def count_pending_orders(self) -> int:
+        """Count total pending orders"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT COUNT(*) FROM orders WHERE status = 'PENDING'")
+            count = cursor.fetchone()[0]
+            
+            conn.close()
+            return count
+        except Exception as e:
+            print(f"[DB] Error counting pending orders: {str(e)}")
+            return 0
+    
+    def count_filled_orders(self) -> int:
+        """Count total filled orders"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT COUNT(*) FROM orders WHERE status = 'FILLED'")
+            count = cursor.fetchone()[0]
+            
+            conn.close()
+            return count
+        except Exception as e:
+            print(f"[DB] Error counting filled orders: {str(e)}")
+            return 0
+    
+    def count_transactions(self) -> int:
+        """Count total transactions"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT COUNT(*) FROM transactions")
+            count = cursor.fetchone()[0]
+            
+            conn.close()
+            return count
+        except Exception as e:
+            print(f"[DB] Error counting transactions: {str(e)}")
+            return 0
 
 # Global database manager instance
 db_manager = DatabaseManager()

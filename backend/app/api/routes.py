@@ -11,11 +11,20 @@ from backend.app.utils.database import get_db_manager
 from backend.app.services.crypto_service import get_crypto_service
 from backend.app.services.security_service import get_security_service
 from backend.app.services.websocket_service import manager, handle_websocket_messages
+from security.blue_team.defense_system import IntrusionDetectionSystem
 
-# Create router
+
+# =========================
+# API Router Setup
+# =========================
 router = APIRouter()
 
-# Pydantic models for request/response validation
+# Initialize Blue Team Intrusion Detection System
+ids_system = IntrusionDetectionSystem()
+
+## =========================
+# Pydantic Models for Request/Response Validation
+## =========================
 class UserCreate(BaseModel):
     username: str
     password: str
@@ -37,7 +46,9 @@ class ChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str
 
-# Dependency injection
+## =========================
+# Dependency Injection & Auth Helpers
+## =========================
 def get_current_user(request: Request):
     """Get current user from request"""
     auth_header = request.headers.get('Authorization')
@@ -58,7 +69,9 @@ def get_current_user(request: Request):
     except Exception as e:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-# Authentication endpoints
+## =========================
+# Authentication Endpoints
+## =========================
 @router.post("/api/auth/register")
 async def register_user(user_data: UserCreate, request: Request):
     """Register a new user"""
@@ -110,16 +123,20 @@ async def logout_user(request: Request, authorization: str = Header(None)):
         session_token = authorization[7:]  # Remove "Bearer " prefix
     
     auth_service = get_auth_service()
-    
-    # For demo, we'll use a mock user ID
-    # In a real implementation, we would extract this from the token
-    user_id = 12345
-    
-    result = auth_service.logout_user(user_id, session_token)
-    
-    if not result:
-        raise HTTPException(status_code=500, detail="Logout failed")
-    
+    # Look up session in DB to get user_id
+    db = auth_service.db
+    print(f"[DEBUG] Logout requested. Session token: {session_token}")
+    session = db.get_session(session_token)
+    print(f"[DEBUG] Session lookup result: {session}")
+    if session and session.get("user_id"):
+        user_id = session["user_id"]
+        result = auth_service.logout_user(user_id, session_token)
+        if not result:
+            print("[DEBUG] Logout failed during session invalidation.")
+            # Still return success for idempotency
+    else:
+        print("[DEBUG] Invalid or expired session. Returning success for idempotency.")
+    print(f"[DEBUG] Logout endpoint returning success.")
     return {"success": True, "message": "Logged out successfully"}
 
 @router.post("/api/auth/change-password")
@@ -137,7 +154,9 @@ async def change_password(password_data: ChangePasswordRequest, current_user: di
     
     return result
 
-# Trading endpoints
+## =========================
+# Trading Endpoints
+## =========================
 @router.post("/api/trading/orders")
 async def create_order(order_data: OrderCreate, request: Request, current_user: dict = Depends(get_current_user)):
     """Create a new secure order"""
@@ -190,7 +209,9 @@ async def get_vwap(symbol: str):
     
     return {"symbol": symbol, "vwap": vwap}
 
-# Search endpoint
+## =========================
+# Search Endpoint
+## =========================
 @router.post("/api/search")
 async def search_trades(search_data: SearchRequest, request: Request):
     """Search trades by keyword"""
@@ -202,7 +223,9 @@ async def search_trades(search_data: SearchRequest, request: Request):
     
     return {"results": results, "count": len(results)}
 
-# Security endpoints
+## =========================
+# Security Endpoints
+## =========================
 @router.get("/api/security/events")
 async def get_security_events():
     """Get recent security events"""
@@ -246,120 +269,253 @@ async def get_audit_log():
     
     return {"audit_log": audit_log}
 
-# Simulation endpoints
+## =========================
+# Simulation Endpoints
+## =========================
 @router.post("/api/security/simulate/sql_injection")
 async def simulate_sql_injection(request: Request):
-    """Simulate SQL injection attack"""
+    """Simulate SQL injection attack with Blue Team defense"""
     # Get client IP
     client_host = request.client.host if request.client else "unknown"
     
     db = get_db_manager()
     
+    # Simulate malicious SQL query
+    malicious_query = "SELECT * FROM users WHERE username = 'admin' OR '1'='1' --"
+    
+    # Blue Team: Check for SQL injection
+    ids_result = ids_system.check_sql_injection(malicious_query, client_host)
+    
     # Log the simulation event
     db.log_security_event(
-        "SIMULATION_STARTED",
-        "SQL Injection simulation initiated",
+        "SQL_INJECTION_ATTEMPT",
+        f"SQL Injection simulation from {client_host}",
         client_host,
-        "INFO"
+        "WARNING" if ids_result["detected"] else "INFO"
     )
     
-    return {
-        "success": True,
-        "message": "SQL Injection simulation started",
-        "simulation_id": "SIM-SQLI-001",
-        "phases": [
-            {"phase": "attack_initiation", "status": "completed", "description": "Attack vector initiated"},
-            {"phase": "pattern_scanning", "status": "completed", "description": "Scanning for SQL injection patterns"},
-            {"phase": "payload_delivery", "status": "completed", "description": "Attack payload delivered"},
-            {"phase": "defense_response", "status": "completed", "description": "Automated defense mechanisms activated"}
-        ]
-    }
+    if ids_result["detected"]:
+        # Blue Team blocked the attack
+        db.log_security_event(
+            "ATTACK_BLOCKED",
+            f"SQL Injection blocked by IDS. Patterns: {', '.join(ids_result['patterns'])}",
+            client_host,
+            "INFO"
+        )
+        
+        return {
+            "success": False,
+            "blocked": True,
+            "message": "SQL Injection attack detected and blocked by IDS",
+            "simulation_id": "SIM-SQLI-001",
+            "detected_patterns": ids_result["patterns"],
+            "threat_level": ids_result["threat_level"],
+            "phases": [
+                {"phase": "attack_initiation", "status": "completed", "description": "🔴 RED_TEAM: SQL injection attack initiated"},
+                {"phase": "pattern_scanning", "status": "completed", "description": f"🔵 BLUE_TEAM: Detected {len(ids_result['patterns'])} malicious patterns"},
+                {"phase": "payload_delivery", "status": "blocked", "description": "⛔ Attack payload delivery blocked by IDS"},
+                {"phase": "defense_response", "status": "completed", "description": "🛡️ DEFENSE: Automated blocking activated - IDS signature match"}
+            ]
+        }
+    else:
+        return {
+            "success": True,
+            "blocked": False,
+            "message": "SQL Injection simulation completed (bypassed detection)",
+            "simulation_id": "SIM-SQLI-001",
+            "phases": [
+                {"phase": "attack_initiation", "status": "completed", "description": "🔴 RED_TEAM: SQL injection attack initiated"},
+                {"phase": "payload_delivery", "status": "completed", "description": "⚠️ WARNING: Attack payload delivered successfully"},
+                {"phase": "database_compromise", "status": "completed", "description": "⚠️ CRITICAL: Database potentially compromised"}
+            ]
+        }
 
 @router.post("/api/security/simulate/brute_force")
 async def simulate_brute_force(request: Request):
-    """Simulate brute force attack"""
+    """Simulate brute force attack with Blue Team defense"""
     # Get client IP
     client_host = request.client.host if request.client else "unknown"
     
     db = get_db_manager()
     
+    # Blue Team: Check for brute force attack
+    ids_result = ids_system.check_brute_force(client_host, attempts=50)
+    
     # Log the simulation event
     db.log_security_event(
-        "SIMULATION_STARTED",
-        "Brute Force simulation initiated",
+        "BRUTE_FORCE_ATTEMPT",
+        f"Brute Force simulation from {client_host} - {ids_result['attempt_count']} attempts",
         client_host,
-        "INFO"
+        "CRITICAL" if ids_result["blocked"] else "WARNING"
     )
     
-    return {
-        "success": True,
-        "message": "Brute Force simulation started",
-        "simulation_id": "SIM-BRUTE-001",
-        "phases": [
-            {"phase": "attack_initiation", "status": "completed", "description": "Brute force attack vector initiated"},
-            {"phase": "credential_stuffing", "status": "completed", "description": "Attempting credential stuffing"},
-            {"phase": "pattern_analysis", "status": "completed", "description": "Analyzing login attempt patterns"},
-            {"phase": "defense_response", "status": "completed", "description": "Automated defense mechanisms activated"}
-        ]
-    }
+    if ids_result["blocked"]:
+        # Blue Team blocked and blacklisted the IP
+        db.log_security_event(
+            "IP_BLOCKED",
+            f"IP {client_host} blacklisted for {ids_result['block_duration']} minutes due to brute force",
+            client_host,
+            "INFO"
+        )
+        
+        return {
+            "success": False,
+            "blocked": True,
+            "message": f"Brute Force attack blocked - IP blacklisted for {ids_result['block_duration']} minutes",
+            "simulation_id": "SIM-BRUTE-001",
+            "attempt_count": ids_result["attempt_count"],
+            "threshold": ids_result["threshold"],
+            "block_duration": ids_result["block_duration"],
+            "phases": [
+                {"phase": "attack_initiation", "status": "completed", "description": "🔴 RED_TEAM: Brute force attack initiated"},
+                {"phase": "credential_stuffing", "status": "detected", "description": f"🔵 BLUE_TEAM: Detected {ids_result['attempt_count']} rapid login attempts"},
+                {"phase": "rate_limiting", "status": "activated", "description": "🛡️ DEFENSE: Rate limiting triggered - threshold exceeded"},
+                {"phase": "ip_blacklist", "status": "completed", "description": f"🛡️ DEFENSE: IP blacklisted for {ids_result['block_duration']} minutes"}
+            ]
+        }
+    else:
+        return {
+            "success": True,
+            "blocked": False,
+            "message": "Brute Force simulation in progress (under threshold)",
+            "simulation_id": "SIM-BRUTE-001",
+            "attempt_count": ids_result["attempt_count"],
+            "phases": [
+                {"phase": "attack_initiation", "status": "completed", "description": "🔴 RED_TEAM: Brute force attack initiated"},
+                {"phase": "credential_stuffing", "status": "in_progress", "description": f"⚠️ WARNING: {ids_result['attempt_count']} login attempts detected"}
+            ]
+        }
 
 @router.post("/api/security/simulate/replay")
 async def simulate_replay(request: Request):
-    """Simulate replay attack"""
+    """Simulate replay attack with Blue Team defense"""
     # Get client IP
     client_host = request.client.host if request.client else "unknown"
     
     db = get_db_manager()
+    crypto_service = get_crypto_service()
+    
+    # Simulate captured transaction
+    fake_transaction = {
+        "from": "user123",
+        "to": "attacker",
+        "amount": 1000,
+        "timestamp": int(time.time()) - 3600  # Old timestamp (1 hour ago)
+    }
+    
+    # Blue Team: Check for replay attack
+    ids_result = ids_system.check_replay_attack(fake_transaction, client_host)
     
     # Log the simulation event
     db.log_security_event(
-        "SIMULATION_STARTED",
-        "Replay Attack simulation initiated",
+        "REPLAY_ATTACK_ATTEMPT",
+        f"Replay attack simulation from {client_host}",
         client_host,
-        "INFO"
+        "WARNING"
     )
     
-    return {
-        "success": True,
-        "message": "Replay Attack simulation started",
-        "simulation_id": "SIM-REPLAY-001",
-        "phases": [
-            {"phase": "attack_initiation", "status": "completed", "description": "Replay attack vector initiated"},
-            {"phase": "transaction_capture", "status": "completed", "description": "Capturing transaction data"},
-            {"phase": "replay_attempt", "status": "completed", "description": "Attempting to replay captured transaction"},
-            {"phase": "defense_response", "status": "completed", "description": "Automated defense mechanisms activated"}
-        ]
-    }
+    if ids_result["blocked"]:
+        # Blue Team blocked the attack
+        db.log_security_event(
+            "ATTACK_BLOCKED",
+            f"Replay attack blocked: {ids_result['reason']}",
+            client_host,
+            "INFO"
+        )
+        
+        return {
+            "success": False,
+            "blocked": True,
+            "message": f"Replay attack blocked - {ids_result['reason']}",
+            "simulation_id": "SIM-REPLAY-001",
+            "timestamp_age": ids_result["timestamp_age"],
+            "nonce_check": ids_result["nonce_valid"],
+            "phases": [
+                {"phase": "attack_initiation", "status": "completed", "description": "🔴 RED_TEAM: Replay attack initiated"},
+                {"phase": "transaction_capture", "status": "completed", "description": "🔴 RED_TEAM: Captured transaction from network"},
+                {"phase": "replay_attempt", "status": "blocked", "description": "🔵 BLUE_TEAM: Replay detected - stale timestamp or invalid nonce"},
+                {"phase": "defense_response", "status": "completed", "description": f"🛡️ DEFENSE: {ids_result['reason']}"}
+            ]
+        }
+    else:
+        return {
+            "success": True,
+            "blocked": False,
+            "message": "Replay attack succeeded (defense bypassed)",
+            "simulation_id": "SIM-REPLAY-001",
+            "phases": [
+                {"phase": "attack_initiation", "status": "completed", "description": "🔴 RED_TEAM: Replay attack initiated"},
+                {"phase": "transaction_capture", "status": "completed", "description": "🔴 RED_TEAM: Transaction captured"},
+                {"phase": "replay_attempt", "status": "completed", "description": "⚠️ WARNING: Transaction replayed successfully"}
+            ]
+        }
 
 @router.post("/api/security/simulate/mitm")
 async def simulate_mitm(request: Request):
-    """Simulate MITM attack"""
+    """Simulate MITM attack with Blue Team defense"""
     # Get client IP
     client_host = request.client.host if request.client else "unknown"
     
     db = get_db_manager()
+    crypto_service = get_crypto_service()
+    
+    # Simulate intercepted data
+    intercepted_data = {
+        "user_id": "12345",
+        "transaction": "buy_order",
+        "amount": 500
+    }
+    
+    # Blue Team: Check encryption and certificate validation
+    ids_result = ids_system.check_mitm_attack(intercepted_data, client_host)
     
     # Log the simulation event
     db.log_security_event(
-        "SIMULATION_STARTED",
-        "MITM Attack simulation initiated",
+        "MITM_ATTACK_ATTEMPT",
+        f"MITM attack simulation from {client_host}",
         client_host,
-        "INFO"
+        "CRITICAL" if not ids_result["encrypted"] else "INFO"
     )
     
-    return {
-        "success": True,
-        "message": "MITM Attack simulation started",
-        "simulation_id": "SIM-MITM-001",
-        "phases": [
-            {"phase": "attack_initiation", "status": "completed", "description": "MITM attack vector initiated"},
-            {"phase": "traffic_interception", "status": "completed", "description": "Intercepting network traffic"},
-            {"phase": "data_manipulation", "status": "completed", "description": "Manipulating intercepted data"},
-            {"phase": "defense_response", "status": "completed", "description": "Automated defense mechanisms activated"}
-        ]
-    }
+    if ids_result["blocked"]:
+        # Blue Team blocked the attack due to encryption
+        db.log_security_event(
+            "ATTACK_BLOCKED",
+            f"MITM attack thwarted by encryption - {ids_result['encryption_type']}",
+            client_host,
+            "INFO"
+        )
+        
+        return {
+            "success": False,
+            "blocked": True,
+            "message": f"MITM attack blocked - Data protected by {ids_result['encryption_type']}",
+            "simulation_id": "SIM-MITM-001",
+            "encryption_type": ids_result["encryption_type"],
+            "certificate_valid": ids_result["certificate_valid"],
+            "phases": [
+                {"phase": "attack_initiation", "status": "completed", "description": "🔴 RED_TEAM: MITM attack initiated"},
+                {"phase": "traffic_interception", "status": "completed", "description": "🔴 RED_TEAM: Network traffic intercepted"},
+                {"phase": "decryption_attempt", "status": "failed", "description": "🔵 BLUE_TEAM: Decryption failed - AES-256-GCM protection"},
+                {"phase": "defense_response", "status": "completed", "description": f"🛡️ DEFENSE: {ids_result['encryption_type']} encryption verified"}
+            ]
+        }
+    else:
+        return {
+            "success": True,
+            "blocked": False,
+            "message": "MITM attack succeeded (unencrypted connection)",
+            "simulation_id": "SIM-MITM-001",
+            "phases": [
+                {"phase": "attack_initiation", "status": "completed", "description": "🔴 RED_TEAM: MITM attack initiated"},
+                {"phase": "traffic_interception", "status": "completed", "description": "🔴 RED_TEAM: Traffic intercepted"},
+                {"phase": "data_manipulation", "status": "completed", "description": "⚠️ CRITICAL: Data intercepted and manipulated"}
+            ]
+        }
 
-# Real-time data endpoints
+## =========================
+# Real-Time Data Endpoints
+## =========================
 @router.get("/api/data/orders/latest")
 async def get_latest_orders(limit: int = 10):
     """Get latest orders for real-time updates"""
@@ -424,7 +580,9 @@ async def get_user_transactions(user_id: int, current_user: dict = Depends(get_c
     
     return {"transactions": transactions}
 
-# New endpoints for logs, orders and attacks views
+## =========================
+# Logs, Orders, and Attacks Views Endpoints
+## =========================
 @router.get("/api/logs/security")
 async def get_security_logs():
     """Get security logs with pagination"""
@@ -443,12 +601,20 @@ async def get_audit_logs(limit: int = 50):
 
 @router.get("/api/logs/user-activity")
 async def get_user_activity_logs():
-    """Get user activity logs (logins, logouts, etc.)"""
+    """Get user activity logs (logins, logouts, registrations, etc.)"""
     db = get_db_manager()
-    events = db.get_recent_security_events(50)
     
-    # Filter for user activity events
-    user_activity = [event for event in events if event["event_type"] in ["USER_LOGIN", "USER_LOGOUT", "USER_REGISTER", "ORDER_PLACED", "ORDER_EXECUTED"]]
+    # Get events filtered by user activity types (up to 100 most recent)
+    event_types = ["USER_LOGIN", "USER_LOGOUT", "USER_REGISTERED"]
+    events = db.get_security_events_by_type(event_types, limit=100)
+    
+    # Add logout_time field for logout events for backward compatibility
+    user_activity = []
+    for event in events:
+        entry = dict(event)
+        if event["event_type"] == "USER_LOGOUT":
+            entry["logout_time"] = event.get("created_at")
+        user_activity.append(entry)
     
     return {"logs": user_activity}
 
@@ -484,13 +650,69 @@ async def get_attack_simulations():
     
     return {"simulations": simulations}
 
-# WebSocket endpoint for real-time updates
+@router.get("/api/security/blue_team/status")
+async def get_blue_team_status():
+    """Get real-time Blue Team IDS status"""
+    db = get_db_manager()
+    
+    # Get recent security events (last hour)
+    recent_events = db.get_recent_security_events(100)
+    
+    # Count events by type
+    sql_injection_detected = sum(1 for e in recent_events if e.get("event_type") == "SQL_INJECTION_DETECTED")
+    brute_force_detected = sum(1 for e in recent_events if e.get("event_type") == "BRUTE_FORCE_DETECTED")
+    replay_detected = sum(1 for e in recent_events if e.get("event_type") == "REPLAY_ATTACK_DETECTED")
+    mitm_detected = sum(1 for e in recent_events if e.get("event_type") == "MITM_ATTACK_DETECTED")
+    attacks_blocked = sum(1 for e in recent_events if e.get("event_type") in ["ATTACK_BLOCKED", "IP_BLOCKED"])
+    
+    # Get blocked IPs
+    blocked_ips = db.get_blocked_ips()
+    
+    # Calculate threat level
+    total_attacks = sql_injection_detected + brute_force_detected + replay_detected + mitm_detected
+    threat_level = "LOW"
+    if total_attacks > 20:
+        threat_level = "CRITICAL"
+    elif total_attacks > 10:
+        threat_level = "HIGH"
+    elif total_attacks > 5:
+        threat_level = "MEDIUM"
+    
+    # IDS status
+    ids_active = ids_system.monitoring_active
+    
+    return {
+        "ids_active": ids_active,
+        "threat_level": threat_level,
+        "monitoring_uptime": "Active" if ids_active else "Inactive",
+        "detections": {
+            "sql_injection": sql_injection_detected,
+            "brute_force": brute_force_detected,
+            "replay_attack": replay_detected,
+            "mitm_attack": mitm_detected,
+            "total": total_attacks
+        },
+        "defenses": {
+            "attacks_blocked": attacks_blocked,
+            "ips_blacklisted": len(blocked_ips),
+            "defense_rate": round((attacks_blocked / total_attacks * 100) if total_attacks > 0 else 100, 1)
+        },
+        "recent_events": recent_events[:10],  # Last 10 events
+        "blocked_ips": blocked_ips[:10],  # Last 10 blocked IPs
+        "timestamp": int(time.time())
+    }
+
+## =========================
+# WebSocket Endpoint for Real-Time Updates
+## =========================
 @router.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: int):
     """WebSocket endpoint for real-time updates"""
     await handle_websocket_messages(websocket, user_id)
 
-# Health check endpoint
+## =========================
+# Health Check Endpoint
+## =========================
 @router.get("/api/health")
 async def health_check():
     """Health check endpoint"""
@@ -500,7 +722,9 @@ async def health_check():
         "timestamp": int(time.time())
     }
 
-# New endpoints for encrypted data operations
+## =========================
+# Encrypted Data Operations Endpoints
+## =========================
 @router.post("/api/crypto/encrypt")
 async def encrypt_data(data: dict, request: Request):
     """Encrypt data using AES-256-GCM"""

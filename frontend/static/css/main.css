@@ -1,0 +1,43 @@
+/* Reset and base styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'JetBrains Mono', monospace;
+    background-color: #0a0a0f;
+    color: #e2e8f0;
+    line-height: 1.6;
+}
+
+/* Terminal-inspired styling */
+.terminal-bg {
+    background-color: #0a0a0f;
+}
+
+.terminal-surface {
+    background-color: #141420;
+}
+
+.terminal-border {
+    border-color: #1a1a2e;
+}
+
+.terminal-accent {
+    color: #00ff88;
+}
+
+.terminal-text {
+    color: #e2e8f0;
+}
+
+.terminal-muted {
+    color: #64748b;
+}
+
+.terminal-danger {
+    color: #ff4757;
+}
+/* ...existing code... */

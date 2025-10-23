@@ -16,6 +16,14 @@ class TradingService:
     def __init__(self):
         self.db = get_db_manager()
         self.crypto = get_crypto_service()
+        self._matching_engine = None  # Lazy load to avoid circular imports
+    
+    def _get_matching_engine(self):
+        """Lazy load matching engine to avoid circular imports"""
+        if self._matching_engine is None:
+            from backend.app.services.matching_engine import get_matching_engine
+            self._matching_engine = get_matching_engine()
+        return self._matching_engine
     
     def create_order(self, user_id: int, symbol: str, side: str, quantity: float, price: float, order_type: str = "MARKET") -> Dict[str, Any]:
         """
@@ -66,10 +74,18 @@ class TradingService:
                 self.db.log_security_event(
                     "ORDER_CREATED",
                     f"New {side} {order_type} order for {quantity} {symbol} created",
-                    user_id=user_id,
-                    resource="ORDER",
-                    severity="INFO"
+                    severity="INFO",
+                    details={"user_id": user_id, "resource": "ORDER"}
                 )
+                
+                # Trigger order matching for this symbol
+                try:
+                    matching_engine = self._get_matching_engine()
+                    executions = matching_engine.match_orders(symbol)
+                    if executions:
+                        logging.info(f"Order matching executed {len(executions)} trades for {symbol}")
+                except Exception as e:
+                    logging.error(f"Error during order matching: {str(e)}")
                 
                 return {
                     "success": True,
@@ -125,12 +141,15 @@ class TradingService:
     
     def get_order_book(self, symbol: str) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Get order book for a symbol with real data
+        Get order book for a symbol with real PENDING orders only
         """
         try:
-            # Get all orders for this symbol
+            # Get only PENDING orders for this symbol (real orderbook)
             all_orders = self.db.get_all_orders()
-            symbol_orders = [order for order in all_orders if order["symbol"] == symbol]
+            symbol_orders = [
+                order for order in all_orders 
+                if order["symbol"] == symbol and order["status"] == "PENDING"
+            ]
             
             # Separate buy and sell orders
             buy_orders = [order for order in symbol_orders if order["side"] == "buy"]
@@ -294,9 +313,8 @@ class TradingService:
                 self.db.log_security_event(
                     "TRANSACTION_EXECUTED",
                     f"Order {order_id} executed: {order['side']} {order['quantity']} {order['symbol']} @ ${order['price']}",
-                    user_id=order["user_id"],
-                    resource="TRANSACTION",
-                    severity="INFO"
+                    severity="INFO",
+                    details={"user_id": order["user_id"], "resource": "TRANSACTION"}
                 )
                 
                 # Update user portfolio
@@ -325,15 +343,15 @@ class TradingService:
                 "message": f"Order execution failed: {str(e)}"
             }
     
-    def get_user_portfolio(self, user_id: int) -> List[Dict[str, Any]]:
+    def get_user_portfolio(self, user_id: int) -> Dict[str, Any]:
         """
-        Get user's portfolio holdings
+        Get user's portfolio holdings with enriched data
         """
         try:
             return self.db.get_user_portfolio(user_id)
         except Exception as e:
             print(f"[TRADING] Error getting user portfolio: {str(e)}")
-            return []
+            return {"assets": [], "total_value": 0, "asset_count": 0}
     
     def get_market_data(self, symbol: str = None) -> List[Dict[str, Any]]:
         """

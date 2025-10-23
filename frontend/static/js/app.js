@@ -9,7 +9,15 @@ import { domUtils, formUtils, dateUtils, numberUtils, uiUtils, validationRules, 
 import { TableComponent, CardComponent, ChartComponent, ModalComponent, FormComponent, TabComponent, ToastComponent, ProgressBarComponent, ListComponent } from '/static/js/components.js';
 
 // Main application class
+// =========================
+// SecureTradingApp Class
+// =========================
+// Main SPA logic for Secure Stock Trading Exchange
+// Handles authentication, navigation, data loading, UI updates, and security simulations
 class SecureTradingApp {
+    // =========================
+    // Constructor & Properties
+    // =========================
     constructor() {
         this.currentUser = null;
         this.isLoggedIn = false;
@@ -23,7 +31,9 @@ class SecureTradingApp {
         this.userId = null;
     }
 
-    // Initialize the application
+    // =========================
+    // Initialization
+    // =========================
     async init() {
         if (this.isInitialized) return;
         
@@ -46,7 +56,9 @@ class SecureTradingApp {
         console.log('Secure Trading Platform initialized successfully');
     }
 
-    // Set up DOM elements
+    // =========================
+    // DOM Setup
+    // =========================
     setupElements() {
         // Views
         this.views = {
@@ -95,7 +107,9 @@ class SecureTradingApp {
         };
     }
 
-    // Set up event listeners
+    // =========================
+    // Event Listeners
+    // =========================
     setupEventListeners() {
         // Authentication
         if (this.forms.login) {
@@ -135,6 +149,26 @@ class SecureTradingApp {
             this.forms.tradingOrder.addEventListener('submit', (e) => this.handleTradingOrder(e));
         }
         
+        // Order book symbol selector
+        const orderbookSymbolSelect = domUtils.getElement('orderbook-symbol-select');
+        if (orderbookSymbolSelect) {
+            orderbookSymbolSelect.addEventListener('change', (e) => {
+                this.updateOrderBook(e.target.value);
+            });
+        }
+        
+        // Trading asset selector - sync with order book
+        const tradingAssetSelect = domUtils.getElement('trading-asset');
+        if (tradingAssetSelect) {
+            tradingAssetSelect.addEventListener('change', (e) => {
+                const symbol = e.target.value;
+                if (symbol && orderbookSymbolSelect) {
+                    orderbookSymbolSelect.value = symbol;
+                    this.updateOrderBook(symbol);
+                }
+            });
+        }
+        
         // Simulation buttons
         if (this.buttons.sqlInjectionSim) {
             this.buttons.sqlInjectionSim.addEventListener('click', () => this.handleSqlInjectionSim());
@@ -159,7 +193,9 @@ class SecureTradingApp {
         this.setupLogsTabListeners();
     }
 
-    // Check authentication status on page load
+    // =========================
+    // Authentication
+    // =========================
     async checkAuthStatus() {
         const token = localStorage.getItem('auth_token');
         if (token) {
@@ -186,23 +222,24 @@ class SecureTradingApp {
         }
     }
 
-    // Handle login
+    // Handle login form submit
     async handleLogin(e) {
         e.preventDefault();
-        
-        const username = document.getElementById('login-username').value;
+        const username = document.getElementById('login-username').value.trim();
         const password = document.getElementById('login-password').value;
-        
-        if (!username || !password) {
-            this.toast.show('Please enter username and password', 'danger');
+        // Username must be alphanumeric, 3-20 chars
+        if (!username.match(/^[a-zA-Z0-9_]{3,20}$/)) {
+            this.toast.show('Username must be 3-20 characters, letters/numbers/underscores only', 'danger');
             return;
         }
-        
+        // Password must be at least 8 chars, contain a number and a letter
+        if (!password.match(/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d!@#$%^&*]{8,}$/)) {
+            this.toast.show('Password must be at least 8 characters and contain a letter and a number', 'danger');
+            return;
+        }
         try {
             uiUtils.showLoading();
-            
             const result = await apiClient.login(username, password);
-            
             if (result.success) {
                 this.isLoggedIn = true;
                 this.userId = result.user_id;
@@ -221,24 +258,29 @@ class SecureTradingApp {
         }
     }
 
-    // Handle registration
+    // Handle registration form submit
     async handleRegister(e) {
         e.preventDefault();
-        
-        const username = document.getElementById('register-username').value;
+        const username = document.getElementById('register-username').value.trim();
         const password = document.getElementById('register-password').value;
         const confirmPassword = document.getElementById('register-confirm-password').value;
-        
+        // Username must be alphanumeric, 3-20 chars
+        if (!username.match(/^[a-zA-Z0-9_]{3,20}$/)) {
+            this.toast.show('Username must be 3-20 characters, letters/numbers/underscores only', 'danger');
+            return;
+        }
+        // Password must be at least 8 chars, contain a number and a letter
+        if (!password.match(/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d!@#$%^&*]{8,}$/)) {
+            this.toast.show('Password must be at least 8 characters and contain a letter and a number', 'danger');
+            return;
+        }
         if (password !== confirmPassword) {
             this.toast.show('Passwords do not match', 'danger');
             return;
         }
-        
         try {
             uiUtils.showLoading();
-            
             const result = await apiClient.register(username, password);
-            
             if (result.success) {
                 this.toast.show('Registration successful! Please log in.', 'success');
                 this.showLoginTab();
@@ -253,7 +295,7 @@ class SecureTradingApp {
         }
     }
 
-    // Handle logout
+    // Handle logout button click
     async handleLogout() {
         try {
             this.stopRealTimeUpdates();
@@ -271,25 +313,37 @@ class SecureTradingApp {
         }
     }
 
-    // Handle order placement
+    // =========================
+    // Order Placement
+    // =========================
     async handleOrder(e) {
         e.preventDefault();
-        
         const symbol = document.getElementById('order-asset').value;
         const side = document.getElementById('order-type').value;
         const quantity = parseFloat(document.getElementById('order-amount').value);
         const price = parseFloat(document.getElementById('order-price').value);
-        
-        if (!symbol || !side || !quantity || !price) {
-            this.toast.show('Please fill all order fields', 'danger');
+        // Validate asset
+        if (!symbol) {
+            this.toast.show('Please select an asset', 'danger');
             return;
         }
-        
+        // Validate side
+        if (!['buy','sell'].includes(side)) {
+            this.toast.show('Order type must be BUY or SELL', 'danger');
+            return;
+        }
+        // Validate quantity and price
+        if (isNaN(quantity) || quantity <= 0) {
+            this.toast.show('Quantity must be a positive number', 'danger');
+            return;
+        }
+        if (isNaN(price) || price <= 0) {
+            this.toast.show('Price must be a positive number', 'danger');
+            return;
+        }
         try {
             uiUtils.showLoading();
-            
             const result = await apiClient.createOrder(symbol, side, quantity, price);
-            
             if (result.success) {
                 this.toast.show(`Order placed successfully for ${quantity} ${symbol}`, 'success');
                 await this.loadRecentOrders();
@@ -305,7 +359,7 @@ class SecureTradingApp {
         }
     }
 
-    // Handle trading order placement
+    // Handle trading order form submit
     async handleTradingOrder(e) {
         e.preventDefault();
         
@@ -325,9 +379,24 @@ class SecureTradingApp {
             const result = await apiClient.createOrder(symbol, side, quantity, price);
             
             if (result.success) {
-                this.toast.show(`Order placed successfully for ${quantity} ${symbol}`, 'success');
+                this.toast.show(`✅ Order placed: ${side.toUpperCase()} ${quantity} ${symbol} @ $${price}`, 'success');
+                
+                // Refresh order book for this symbol
+                await this.updateOrderBook(symbol);
+                
+                // Refresh portfolio and trading data
                 await this.loadTradingData();
+                
+                // Reset form
                 document.getElementById('trading-order-form').reset();
+                
+                // Reselect the symbol in the dropdown
+                const tradingAsset = document.getElementById('trading-asset');
+                if (tradingAsset) tradingAsset.value = symbol;
+                
+                // Keep order book showing the same symbol
+                const orderbookSelect = document.getElementById('orderbook-symbol-select');
+                if (orderbookSelect) orderbookSelect.value = symbol;
             } else {
                 this.toast.show(result.message || 'Order placement failed', 'danger');
             }
@@ -339,7 +408,9 @@ class SecureTradingApp {
         }
     }
 
-    // Handle navigation between views
+    // =========================
+    // Navigation & View Switching
+    // =========================
     handleNavigation(e) {
         e.preventDefault();
         const target = e.target.closest('a');
@@ -349,7 +420,7 @@ class SecureTradingApp {
         this.switchView(view);
     }
 
-    // Switch between views
+    // Switch between main views
     switchView(viewName) {
         // Hide all views
         for (const viewKey in this.views) {
@@ -383,7 +454,7 @@ class SecureTradingApp {
         });
     }
 
-    // Load view-specific data
+    // Load data for the selected view
     async loadViewData(viewName) {
         switch (viewName) {
             case 'dashboard':
@@ -407,19 +478,19 @@ class SecureTradingApp {
         }
     }
 
-    // Show authentication view
+    // Show authentication view (login/register)
     showAuthView() {
         if (this.elements.mainView) domUtils.hide(this.elements.mainView);
         if (this.elements.authView) domUtils.show(this.elements.authView);
     }
 
-    // Show main application view
+    // Show main application view (dashboard, trading, etc.)
     showMainView() {
         if (this.elements.authView) domUtils.hide(this.elements.authView);
         if (this.elements.mainView) domUtils.show(this.elements.mainView);
     }
 
-    // Show login tab
+    // Show login tab in auth view
     showLoginTab() {
         const loginForm = domUtils.getElement('login-form');
         const registerForm = domUtils.getElement('register-form');
@@ -440,7 +511,7 @@ class SecureTradingApp {
         }
     }
 
-    // Show register tab
+    // Show register tab in auth view
     showRegisterTab() {
         const loginForm = domUtils.getElement('login-form');
         const registerForm = domUtils.getElement('register-form');
@@ -461,6 +532,9 @@ class SecureTradingApp {
         }
     }
 
+    // =========================
+    // User Data & Assets
+    // =========================
     // Load user data after login
     async loadUserData() {
         try {
@@ -482,12 +556,12 @@ class SecureTradingApp {
         }
     }
 
-    // Initialize all views
+    // Initialize all views (load assets, etc.)
     async initializeViews() {
         await this.loadAssets();
     }
 
-    // Load assets for order forms
+    // Load assets for order/trading forms
     async loadAssets() {
         const assets = [
             { symbol: 'BTC', name: 'Bitcoin' },
@@ -523,6 +597,9 @@ class SecureTradingApp {
         }
     }
 
+    // =========================
+    // Dashboard & Data Loading
+    // =========================
     // Load dashboard data (all stats dynamic)
     async loadDashboardData() {
         try {
@@ -561,6 +638,11 @@ class SecureTradingApp {
 
             // Update system status
             this.updateSystemStatus();
+            
+            // Update order book with selected symbol (default BTC)
+            const orderbookSelect = domUtils.getElement('orderbook-symbol-select');
+            const selectedSymbol = orderbookSelect?.value || 'BTC';
+            this.updateOrderBook(selectedSymbol);
         } catch (error) {
             console.error('Error loading dashboard data:', error);
         }
@@ -645,6 +727,137 @@ class SecureTradingApp {
         });
     }
 
+    // Update order book display with improved formatting
+    async updateOrderBook(symbol = 'BTC') {
+        try {
+            const orderBookData = await apiClient.getOrderBook(symbol);
+            
+            // Update sell orders (asks) - highest to lowest
+            const sellOrdersList = domUtils.getElement('sell-orders-list');
+            const sellOrdersCount = domUtils.getElement('sell-orders-count');
+            
+            if (sellOrdersList) {
+                if (!orderBookData.sell_orders || orderBookData.sell_orders.length === 0) {
+                    sellOrdersList.innerHTML = '<div class="text-center text-gray-500 py-4 text-sm">No sell orders</div>';
+                    if (sellOrdersCount) sellOrdersCount.textContent = '0 orders';
+                } else {
+                    // Sort sell orders by price (descending - highest first)
+                    const sortedSells = [...orderBookData.sell_orders].sort((a, b) => b.price - a.price);
+                    
+                    sellOrdersList.innerHTML = sortedSells.map(order => {
+                        const total = order.price * order.quantity;
+                        const barWidth = Math.min((order.quantity / Math.max(...sortedSells.map(o => o.quantity))) * 100, 100);
+                        
+                        return `
+                            <div class="relative grid grid-cols-3 text-xs py-2 px-2 rounded hover:bg-gray-700 transition-colors cursor-pointer group">
+                                <!-- Background bar -->
+                                <div class="absolute inset-0 bg-red-900 opacity-10 rounded" style="width: ${barWidth}%"></div>
+                                
+                                <!-- Price -->
+                                <div class="text-left text-red-400 font-semibold z-10">${numberUtils.formatCurrency(order.price, 2)}</div>
+                                
+                                <!-- Quantity -->
+                                <div class="text-center text-gray-300 z-10">${numberUtils.formatNumber(order.quantity, 4)}</div>
+                                
+                                <!-- Total -->
+                                <div class="text-right text-gray-400 z-10">${numberUtils.formatCurrency(total, 2)}</div>
+                                
+                                <!-- Hover tooltip -->
+                                <div class="absolute left-0 top-full mt-1 hidden group-hover:block bg-gray-900 border border-gray-700 rounded p-2 text-xs z-20 whitespace-nowrap">
+                                    <div class="text-gray-400">Orders: <span class="text-green-400">${order.count || 1}</span></div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                    
+                    if (sellOrdersCount) sellOrdersCount.textContent = `${sortedSells.length} orders`;
+                }
+            }
+            
+            // Update buy orders (bids) - highest to lowest
+            const buyOrdersList = domUtils.getElement('buy-orders-list');
+            const buyOrdersCount = domUtils.getElement('buy-orders-count');
+            
+            if (buyOrdersList) {
+                if (!orderBookData.buy_orders || orderBookData.buy_orders.length === 0) {
+                    buyOrdersList.innerHTML = '<div class="text-center text-gray-500 py-4 text-sm">No buy orders</div>';
+                    if (buyOrdersCount) buyOrdersCount.textContent = '0 orders';
+                } else {
+                    // Sort buy orders by price (descending - highest first)
+                    const sortedBuys = [...orderBookData.buy_orders].sort((a, b) => b.price - a.price);
+                    
+                    buyOrdersList.innerHTML = sortedBuys.map(order => {
+                        const total = order.price * order.quantity;
+                        const barWidth = Math.min((order.quantity / Math.max(...sortedBuys.map(o => o.quantity))) * 100, 100);
+                        
+                        return `
+                            <div class="relative grid grid-cols-3 text-xs py-2 px-2 rounded hover:bg-gray-700 transition-colors cursor-pointer group">
+                                <!-- Background bar -->
+                                <div class="absolute inset-0 bg-green-900 opacity-10 rounded" style="width: ${barWidth}%"></div>
+                                
+                                <!-- Price -->
+                                <div class="text-left text-green-400 font-semibold z-10">${numberUtils.formatCurrency(order.price, 2)}</div>
+                                
+                                <!-- Quantity -->
+                                <div class="text-center text-gray-300 z-10">${numberUtils.formatNumber(order.quantity, 4)}</div>
+                                
+                                <!-- Total -->
+                                <div class="text-right text-gray-400 z-10">${numberUtils.formatCurrency(total, 2)}</div>
+                                
+                                <!-- Hover tooltip -->
+                                <div class="absolute left-0 top-full mt-1 hidden group-hover:block bg-gray-900 border border-gray-700 rounded p-2 text-xs z-20 whitespace-nowrap">
+                                    <div class="text-gray-400">Orders: <span class="text-green-400">${order.count || 1}</span></div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                    
+                    if (buyOrdersCount) buyOrdersCount.textContent = `${sortedBuys.length} orders`;
+                }
+            }
+            
+            // Calculate and display spread
+            const spreadValue = domUtils.getElement('spread-value');
+            if (spreadValue && orderBookData.sell_orders?.length > 0 && orderBookData.buy_orders?.length > 0) {
+                const lowestAsk = Math.min(...orderBookData.sell_orders.map(o => o.price));
+                const highestBid = Math.max(...orderBookData.buy_orders.map(o => o.price));
+                const spread = lowestAsk - highestBid;
+                const spreadPercent = (spread / lowestAsk) * 100;
+                
+                spreadValue.textContent = `${numberUtils.formatCurrency(spread, 2)} (${numberUtils.formatPercentage(spreadPercent, 2)})`;
+            } else if (spreadValue) {
+                spreadValue.textContent = '--';
+            }
+            
+            // Update last price (use midpoint of spread or last trade)
+            const lastPrice = domUtils.getElement('last-price');
+            if (lastPrice && orderBookData.sell_orders?.length > 0 && orderBookData.buy_orders?.length > 0) {
+                const lowestAsk = Math.min(...orderBookData.sell_orders.map(o => o.price));
+                const highestBid = Math.max(...orderBookData.buy_orders.map(o => o.price));
+                const midPrice = (lowestAsk + highestBid) / 2;
+                
+                lastPrice.textContent = numberUtils.formatCurrency(midPrice, 2);
+            } else if (lastPrice) {
+                lastPrice.textContent = '--';
+            }
+            
+            // Update 24h volume (simplified - sum of all order quantities)
+            const volume24h = domUtils.getElement('24h-volume');
+            if (volume24h) {
+                const totalBuyQty = orderBookData.buy_orders?.reduce((sum, o) => sum + o.quantity, 0) || 0;
+                const totalSellQty = orderBookData.sell_orders?.reduce((sum, o) => sum + o.quantity, 0) || 0;
+                const totalVolume = totalBuyQty + totalSellQty;
+                
+                volume24h.textContent = totalVolume > 0 ? numberUtils.formatNumber(totalVolume, 2) : '--';
+            }
+        } catch (error) {
+            console.error('Error updating order book:', error);
+        }
+    }
+
+    // =========================
+    // Security Events & Portfolio
+    // =========================
     // Update security events
     updateSecurityEvents(events) {
         const container = this.elements.securityEventsContainer;
@@ -692,7 +905,7 @@ class SecureTradingApp {
         }
     }
 
-    // Update system status
+    // Update system status (Merkle root, etc.)
     updateSystemStatus() {
         const dashboardMerkleRoot = domUtils.getElement('dashboard-merkle-root');
         if (dashboardMerkleRoot) {
@@ -700,7 +913,7 @@ class SecureTradingApp {
         }
     }
 
-    // Load recent orders
+    // Load recent orders for user
     async loadRecentOrders() {
         try {
             const orders = await apiClient.getUserOrders();
@@ -712,7 +925,7 @@ class SecureTradingApp {
         }
     }
 
-    // Load trading data
+    // Load trading data for trading view
     async loadTradingData() {
         try {
             const [marketData, orders, portfolio] = await Promise.allSettled([
@@ -729,7 +942,7 @@ class SecureTradingApp {
         }
     }
 
-    // Update portfolio table
+    // Update portfolio table in trading view
     updatePortfolioTable(portfolio) {
         const table = domUtils.getElement('portfolio-table');
         if (!table) return;
@@ -740,31 +953,47 @@ class SecureTradingApp {
         tbody.innerHTML = '';
         
         if (!portfolio.assets || portfolio.assets.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="py-2 text-center text-gray-400">No assets in portfolio</td></tr>';
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="5" class="py-8 text-center">
+                        <div class="text-gray-400 mb-2">📭 Your portfolio is empty</div>
+                        <div class="text-sm text-gray-500">Place some buy orders to start building your portfolio</div>
+                    </td>
+                </tr>
+            `;
             return;
         }
         
         portfolio.assets.forEach(asset => {
             const tr = document.createElement('tr');
-            tr.className = 'border-b border-gray-800';
+            tr.className = 'border-b border-gray-800 hover:bg-gray-800 transition-colors';
             
             const change = asset.change || 0;
             const changeClass = change >= 0 ? 'text-green-400' : 'text-red-400';
             const changePrefix = change >= 0 ? '+' : '';
+            const changeIcon = change >= 0 ? '📈' : '📉';
             
             tr.innerHTML = `
-                <td class="py-2 text-green-400">${asset.symbol || 'N/A'}</td>
-                <td class="py-2 text-right">${numberUtils.formatNumber(asset.quantity || 0, 4)}</td>
-                <td class="py-2 text-right">${numberUtils.formatCurrency(asset.price || 0, 2)}</td>
-                <td class="py-2 text-right">${numberUtils.formatCurrency(asset.total_value || 0, 2)}</td>
-                <td class="py-2 text-right ${changeClass}">${changePrefix}${numberUtils.formatPercentage(change, 2)}</td>
+                <td class="py-3">
+                    <div class="text-green-400 font-semibold">${asset.symbol || 'N/A'}</div>
+                    <div class="text-xs text-gray-500">${asset.name || ''}</div>
+                </td>
+                <td class="py-3 text-right text-gray-300">${numberUtils.formatNumber(asset.quantity || 0, 4)}</td>
+                <td class="py-3 text-right">
+                    <div class="text-gray-300">${numberUtils.formatCurrency(asset.price || 0, 2)}</div>
+                    <div class="text-xs text-gray-500">Avg: ${numberUtils.formatCurrency(asset.avg_buy_price || 0, 2)}</div>
+                </td>
+                <td class="py-3 text-right text-gray-300 font-semibold">${numberUtils.formatCurrency(asset.total_value || 0, 2)}</td>
+                <td class="py-3 text-right ${changeClass} font-semibold">
+                    ${changeIcon} ${changePrefix}${numberUtils.formatPercentage(change, 2)}
+                </td>
             `;
             
             tbody.appendChild(tr);
         });
     }
 
-    // Load security data
+    // Load security data (events, blocked IPs)
     async loadSecurityData() {
         try {
             const [securityEvents, blockedIps] = await Promise.allSettled([
@@ -826,7 +1055,7 @@ class SecureTradingApp {
         });
     }
 
-    // Unblock IP
+    // Unblock IP address
     async unblockIp(ipAddress) {
         try {
             await apiClient.unblockIp(ipAddress);
@@ -838,12 +1067,18 @@ class SecureTradingApp {
         }
     }
 
-    // Load crypto data
+    // =========================
+    // Crypto Demos
+    // =========================
+    // Load crypto data (client-side demos)
     async loadCryptoData() {
         // Crypto demos are client-side only
         console.log('Crypto demo view loaded');
     }
 
+    // =========================
+    // Logs & Simulations
+    // =========================
     // Load logs data (all tabs)
     async loadLogsData() {
         try {
@@ -875,12 +1110,15 @@ class SecureTradingApp {
 
         tbody.innerHTML = '';
 
-        if (!logs || logs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" class="py-2 text-center text-gray-400">No logs available</td></tr>';
+        // Filter for login/logout events only
+        const filteredLogs = logs ? logs.filter(log => log.event_type === 'USER_LOGIN' || log.event_type === 'USER_LOGOUT') : [];
+
+        if (!filteredLogs || filteredLogs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="py-2 text-center text-gray-400">No login/logout logs available</td></tr>';
             return;
         }
 
-        logs.slice(0, 10).forEach(log => {
+        filteredLogs.slice(0, 10).forEach(log => {
             const tr = document.createElement('tr');
             tr.className = 'border-b border-gray-800';
 
@@ -991,7 +1229,9 @@ class SecureTradingApp {
         });
     }
 
-    // Setup crypto demo event listeners
+    // =========================
+    // Crypto Demo Event Listeners
+    // =========================
     setupCryptoDemoEventListeners() {
         // AES encryption demo
         const aesEncryptBtn = domUtils.getElement('aes-encrypt-btn');
@@ -1140,7 +1380,7 @@ class SecureTradingApp {
         }
     }
 
-    // Handle Merkle root generation
+    // Handle Merkle root generation demo
     async handleGenerateMerkle() {
         const transactionData = document.getElementById('merkle-transaction-data')?.value;
         if (!transactionData) {
@@ -1203,7 +1443,9 @@ class SecureTradingApp {
         }
     }
 
-    // Setup logs tab listeners
+    // =========================
+    // Logs Tab Event Listeners
+    // =========================
     setupLogsTabListeners() {
         const userLogsTab = domUtils.getElement('user-logs-tab');
         const securityLogsTab = domUtils.getElement('security-logs-tab');
@@ -1259,7 +1501,7 @@ class SecureTradingApp {
         }
     }
 
-    // Load specific log types
+    // Load user logs tab data
     async loadUserLogs() {
         try {
             const logs = await apiClient.getUserActivityLogs();
@@ -1271,6 +1513,7 @@ class SecureTradingApp {
         }
     }
 
+    // Load security logs tab data
     async loadSecurityLogs() {
         try {
             const logs = await apiClient.getSecurityEvents();
@@ -1282,6 +1525,7 @@ class SecureTradingApp {
         }
     }
 
+    // Load audit logs tab data
     async loadAuditLogs() {
         try {
             const logs = await apiClient.getAuditLog();
@@ -1294,64 +1538,257 @@ class SecureTradingApp {
         }
     }
 
-    // Handle simulation buttons
+    // =========================
+    // Security Simulation Handlers
+    // =========================
+    // Red vs Blue Battle Statistics
+    battleStats = {
+        red: { sql: 0, brute: 0, mitm: 0, successful: 0, total: 0 },
+        blue: { detected: 0, blocked: 0, blacklisted: 0 }
+    };
+
+    // Handle SQL Injection simulation button
     async handleSqlInjectionSim() {
         try {
             uiUtils.showLoading();
+            this.addBattleLog('🔴 RED_TEAM: Launching SQL injection attack...', 'red');
+            
             const result = await apiClient.simulateSqlInjection();
-            this.toast.show('SQL Injection simulation completed', 'success');
+            
+            // Update Red Team stats
+            this.battleStats.red.sql++;
+            this.battleStats.red.total++;
+            
+            // Check if attack was blocked
+            const blocked = result.success === false || result.blocked === true;
+            if (blocked) {
+                this.battleStats.blue.detected++;
+                this.battleStats.blue.blocked++;
+                this.addBattleLog('🔵 BLUE_TEAM: SQL injection detected and blocked!', 'blue');
+                this.addBattleLog('🛡️ DEFENSE: Attack signature matched in IDS', 'green');
+            } else {
+                this.battleStats.red.successful++;
+                this.addBattleLog('⚠️ ALERT: SQL injection executed', 'yellow');
+            }
+            
+            this.updateBattleVisuals();
+            this.toast.show('SQL Injection simulation completed', blocked ? 'success' : 'warning');
             this.updateSimulationOutput('SQL Injection Simulation', result);
             await this.loadSimulationsData();
         } catch (error) {
             console.error('SQL Injection simulation error:', error);
             this.toast.show('Simulation failed: ' + error.message, 'danger');
+            this.addBattleLog('❌ ERROR: Simulation failed - ' + error.message, 'error');
         } finally {
             uiUtils.hideLoading();
         }
     }
 
+    // Handle Brute Force simulation button
     async handleBruteForceSim() {
         try {
             uiUtils.showLoading();
+            this.addBattleLog('🔴 RED_TEAM: Initiating brute force attack...', 'red');
+            
             const result = await apiClient.simulateBruteForce();
-            this.toast.show('Brute Force simulation completed', 'success');
+            
+            // Update Red Team stats
+            this.battleStats.red.brute++;
+            this.battleStats.red.total++;
+            
+            // Check if attack was blocked
+            const blocked = result.success === false || result.blocked === true;
+            if (blocked) {
+                this.battleStats.blue.detected++;
+                this.battleStats.blue.blocked++;
+                this.battleStats.blue.blacklisted++;
+                this.addBattleLog('🔵 BLUE_TEAM: Brute force detected! IP blacklisted', 'blue');
+                this.addBattleLog('🛡️ DEFENSE: Rate limiting activated', 'green');
+            } else {
+                this.battleStats.red.successful++;
+                this.addBattleLog('⚠️ ALERT: Brute force in progress', 'yellow');
+            }
+            
+            this.updateBattleVisuals();
+            this.toast.show('Brute Force simulation completed', blocked ? 'success' : 'warning');
             this.updateSimulationOutput('Brute Force Simulation', result);
             await this.loadSimulationsData();
         } catch (error) {
             console.error('Brute Force simulation error:', error);
             this.toast.show('Simulation failed: ' + error.message, 'danger');
+            this.addBattleLog('❌ ERROR: Simulation failed - ' + error.message, 'error');
         } finally {
             uiUtils.hideLoading();
         }
     }
 
+    // Handle Replay Attack simulation button
     async handleReplayAttackSim() {
         try {
             uiUtils.showLoading();
+            this.addBattleLog('🔴 RED_TEAM: Executing replay attack...', 'red');
+            
             const result = await apiClient.simulateReplay();
-            this.toast.show('Replay Attack simulation completed', 'success');
+            
+            // Update Red Team stats
+            this.battleStats.red.mitm++;
+            this.battleStats.red.total++;
+            
+            // Check if attack was blocked
+            const blocked = result.success === false || result.blocked === true;
+            if (blocked) {
+                this.battleStats.blue.detected++;
+                this.battleStats.blue.blocked++;
+                this.addBattleLog('🔵 BLUE_TEAM: Replay attack detected via nonce validation', 'blue');
+                this.addBattleLog('🛡️ DEFENSE: Timestamp verification successful', 'green');
+            } else {
+                this.battleStats.red.successful++;
+                this.addBattleLog('⚠️ ALERT: Replay attack succeeded', 'yellow');
+            }
+            
+            this.updateBattleVisuals();
+            this.toast.show('Replay Attack simulation completed', blocked ? 'success' : 'warning');
             this.updateSimulationOutput('Replay Attack Simulation', result);
             await this.loadSimulationsData();
         } catch (error) {
             console.error('Replay Attack simulation error:', error);
             this.toast.show('Simulation failed: ' + error.message, 'danger');
+            this.addBattleLog('❌ ERROR: Simulation failed - ' + error.message, 'error');
         } finally {
             uiUtils.hideLoading();
         }
     }
 
+    // Handle MITM Attack simulation button
     async handleMitmAttackSim() {
         try {
             uiUtils.showLoading();
+            this.addBattleLog('🔴 RED_TEAM: Attempting Man-in-the-Middle attack...', 'red');
+            
             const result = await apiClient.simulateMitm();
-            this.toast.show('MITM Attack simulation completed', 'success');
+            
+            // Update Red Team stats
+            this.battleStats.red.mitm++;
+            this.battleStats.red.total++;
+            
+            // Check if attack was blocked
+            const blocked = result.success === false || result.blocked === true;
+            if (blocked) {
+                this.battleStats.blue.detected++;
+                this.battleStats.blue.blocked++;
+                this.addBattleLog('🔵 BLUE_TEAM: MITM attack thwarted by encryption', 'blue');
+                this.addBattleLog('🛡️ DEFENSE: AES-256-GCM encryption verified', 'green');
+            } else {
+                this.battleStats.red.successful++;
+                this.addBattleLog('⚠️ ALERT: MITM attack in progress', 'yellow');
+            }
+            
+            this.updateBattleVisuals();
+            this.toast.show('MITM Attack simulation completed', blocked ? 'success' : 'warning');
             this.updateSimulationOutput('MITM Attack Simulation', result);
             await this.loadSimulationsData();
         } catch (error) {
             console.error('MITM Attack simulation error:', error);
             this.toast.show('Simulation failed: ' + error.message, 'danger');
+            this.addBattleLog('❌ ERROR: Simulation failed - ' + error.message, 'error');
         } finally {
             uiUtils.hideLoading();
+        }
+    }
+
+    // Add log entry to battle log
+    addBattleLog(message, type = 'info') {
+        const battleLog = domUtils.getElement('battle-log');
+        if (!battleLog) return;
+        
+        const logEntry = document.createElement('div');
+        const timestamp = new Date().toLocaleTimeString();
+        
+        const colorClass = {
+            'red': 'text-red-400',
+            'blue': 'text-blue-400',
+            'green': 'text-green-400',
+            'yellow': 'text-yellow-400',
+            'error': 'text-red-500',
+            'info': 'text-gray-400'
+        }[type] || 'text-gray-400';
+        
+        logEntry.className = colorClass;
+        logEntry.textContent = `[${timestamp}] ${message}`;
+        
+        battleLog.appendChild(logEntry);
+        battleLog.scrollTop = battleLog.scrollHeight;
+        
+        // Keep only last 100 entries
+        while (battleLog.children.length > 100) {
+            battleLog.removeChild(battleLog.firstChild);
+        }
+    }
+
+    // Update battle visual statistics
+    updateBattleVisuals() {
+        const { red, blue } = this.battleStats;
+        
+        // Update Red Team counters
+        const sqlAttempts = domUtils.getElement('red-sql-attempts');
+        const bruteAttempts = domUtils.getElement('red-brute-attempts');
+        const mitmAttempts = domUtils.getElement('red-mitm-attempts');
+        const redSuccessRate = domUtils.getElement('red-success-rate');
+        
+        if (sqlAttempts) sqlAttempts.textContent = red.sql;
+        if (bruteAttempts) bruteAttempts.textContent = red.brute;
+        if (mitmAttempts) mitmAttempts.textContent = red.mitm;
+        
+        // Calculate and update Red Team success rate
+        const redRate = red.total > 0 ? Math.round((red.successful / red.total) * 100) : 0;
+        if (redSuccessRate) redSuccessRate.textContent = redRate + '%';
+        
+        // Update Red Team progress bars
+        const maxAttempts = Math.max(red.sql, red.brute, red.mitm, 1);
+        this.updateProgressBar('red-sql-bar', (red.sql / maxAttempts) * 100);
+        this.updateProgressBar('red-brute-bar', (red.brute / maxAttempts) * 100);
+        this.updateProgressBar('red-mitm-bar', (red.mitm / maxAttempts) * 100);
+        
+        // Update Blue Team counters
+        const blueDetected = domUtils.getElement('blue-detected');
+        const blueBlocked = domUtils.getElement('blue-blocked');
+        const blueBlacklisted = domUtils.getElement('blue-blacklisted');
+        const blueDefenseRate = domUtils.getElement('blue-defense-rate');
+        
+        if (blueDetected) blueDetected.textContent = blue.detected;
+        if (blueBlocked) blueBlocked.textContent = blue.blocked;
+        if (blueBlacklisted) blueBlacklisted.textContent = blue.blacklisted;
+        
+        // Calculate and update Blue Team defense rate
+        const blueRate = red.total > 0 ? Math.round((blue.blocked / red.total) * 100) : 100;
+        if (blueDefenseRate) {
+            blueDefenseRate.textContent = blueRate + '%';
+            blueDefenseRate.className = blueRate >= 80 ? 'text-2xl font-bold text-green-400' : 
+                                         blueRate >= 50 ? 'text-2xl font-bold text-yellow-400' : 
+                                         'text-2xl font-bold text-red-400';
+        }
+        
+        // Update Blue Team progress bars
+        const maxDefense = Math.max(blue.detected, blue.blocked, blue.blacklisted, 1);
+        this.updateProgressBar('blue-detected-bar', (blue.detected / maxDefense) * 100);
+        this.updateProgressBar('blue-blocked-bar', (blue.blocked / maxDefense) * 100);
+        this.updateProgressBar('blue-blacklist-bar', (blue.blacklisted / maxDefense) * 100);
+        
+        // Update battle status
+        const battleStatus = domUtils.getElement('battle-status');
+        if (battleStatus) {
+            const statusText = blueRate >= 80 ? '<span class="text-green-400">System Secure</span>' :
+                               blueRate >= 50 ? '<span class="text-yellow-400">Under Attack</span>' :
+                               '<span class="text-red-400">Critical Threat</span>';
+            battleStatus.innerHTML = `Status: ${statusText}`;
+        }
+    }
+
+    // Update progress bar width
+    updateProgressBar(barId, percentage) {
+        const bar = domUtils.getElement(barId);
+        if (bar) {
+            bar.style.width = Math.min(percentage, 100) + '%';
         }
     }
 
@@ -1383,6 +1820,9 @@ class SecureTradingApp {
         output.scrollTop = output.scrollHeight;
     }
 
+    // =========================
+    // Real-Time Updates & Cleanup
+    // =========================
     // Start real-time updates
     startRealTimeUpdates() {
         // Update dashboard every 30 seconds
