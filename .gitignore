@@ -133,3 +133,5 @@ Thumbs.db
 trading_platform.db
 *.sqlite
 *.sqlite3
+temp/
+package-lock.json

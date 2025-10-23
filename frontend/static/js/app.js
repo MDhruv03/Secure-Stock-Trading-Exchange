@@ -1253,10 +1253,23 @@ class SecureTradingApp {
             rsaVerifyBtn.addEventListener('click', () => this.handleRsaVerify());
         }
         
-        // Merkle demo
-        const generateMerkleBtn = domUtils.getElement('generate-merkle-btn');
-        if (generateMerkleBtn) {
-            generateMerkleBtn.addEventListener('click', () => this.handleGenerateMerkle());
+        // Merkle tree visualization
+        const merkleBuildTreeBtn = domUtils.getElement('merkle-build-tree-btn');
+        const merkleVerifyProofBtn = domUtils.getElement('merkle-verify-proof-btn');
+        const merkleLoadDbBtn = domUtils.getElement('merkle-load-db-btn');
+        const merkleProofLeafSelect = domUtils.getElement('merkle-proof-leaf-select');
+        
+        if (merkleBuildTreeBtn) {
+            merkleBuildTreeBtn.addEventListener('click', () => this.handleBuildMerkleTree());
+        }
+        if (merkleVerifyProofBtn) {
+            merkleVerifyProofBtn.addEventListener('click', () => this.handleVerifyMerkleProof());
+        }
+        if (merkleLoadDbBtn) {
+            merkleLoadDbBtn.addEventListener('click', () => this.handleLoadDbMerkleTree());
+        }
+        if (merkleProofLeafSelect) {
+            merkleProofLeafSelect.addEventListener('change', (e) => this.handleGenerateProofForLeaf(e.target.value));
         }
         
         // Homomorphic demo
@@ -1380,26 +1393,227 @@ class SecureTradingApp {
         }
     }
 
-    // Handle Merkle root generation demo
-    async handleGenerateMerkle() {
-        const transactionData = document.getElementById('merkle-transaction-data')?.value;
-        if (!transactionData) {
-            this.toast.show('Please enter transaction data', 'danger');
+    // Handle Merkle tree building and visualization
+    async handleBuildMerkleTree() {
+        const leavesInput = document.getElementById('merkle-leaves-input')?.value;
+        if (!leavesInput) {
+            this.toast.show('Please enter transaction leaves', 'danger');
             return;
         }
         
         try {
-            const leaves = [transactionData, cryptoUtils.generateRandomHex(32), cryptoUtils.generateRandomHex(32)];
-            const result = await apiClient.createMerkleRoot(leaves);
+            const leaves = leavesInput.split('\n').filter(line => line.trim()).map(line => line.trim());
             
-            const output = document.getElementById('merkle-root-output');
-            if (output && result.merkle_root) {
-                output.textContent = result.merkle_root;
+            if (leaves.length === 0) {
+                this.toast.show('Please enter at least one transaction', 'danger');
+                return;
             }
-            this.toast.show('Merkle root generated successfully', 'success');
+            
+            const result = await apiClient.buildMerkleTree(leaves);
+            
+            if (result.success && result.tree) {
+                this.currentMerkleTree = result.tree;
+                this.currentMerkleLeaves = leaves;
+                this.visualizeMerkleTree(result.tree);
+                this.updateMerkleStats(result.tree);
+                this.populateProofSelector(leaves);
+                this.toast.show('Merkle tree built successfully', 'success');
+            }
         } catch (error) {
-            console.error('Merkle root generation error:', error);
-            this.toast.show('Merkle generation failed: ' + error.message, 'danger');
+            console.error('Merkle tree building error:', error);
+            this.toast.show('Failed to build Merkle tree: ' + error.message, 'danger');
+        }
+    }
+
+    // Visualize Merkle tree structure
+    visualizeMerkleTree(tree) {
+        const canvas = document.getElementById('merkle-tree-canvas');
+        if (!canvas) return;
+        
+        canvas.innerHTML = '';
+        
+        if (!tree.levels || tree.levels.length === 0) {
+            canvas.innerHTML = '<div class="text-gray-500 text-center">No tree data available</div>';
+            return;
+        }
+        
+        const treeContainer = document.createElement('div');
+        treeContainer.className = 'merkle-tree-container';
+        treeContainer.style.cssText = 'display: flex; flex-direction: column; align-items: center; gap: 20px;';
+        
+        // Render each level from top (root) to bottom (leaves)
+        tree.levels.forEach((level, levelIndex) => {
+            const levelDiv = document.createElement('div');
+            levelDiv.className = 'merkle-level';
+            levelDiv.style.cssText = 'display: flex; justify-content: center; gap: 10px; width: 100%;';
+            
+            level.forEach((node, nodeIndex) => {
+                const nodeDiv = document.createElement('div');
+                nodeDiv.className = 'merkle-node';
+                const isLeaf = node.isLeaf || false;
+                const bgColor = isLeaf ? 'bg-green-900' : (levelIndex === 0 ? 'bg-blue-900' : 'bg-gray-700');
+                
+                nodeDiv.style.cssText = `
+                    padding: 8px 12px;
+                    border-radius: 6px;
+                    border: 2px solid ${isLeaf ? '#10b981' : (levelIndex === 0 ? '#3b82f6' : '#4b5563')};
+                    min-width: 120px;
+                    text-align: center;
+                `;
+                nodeDiv.className = `${bgColor} border transition-all hover:scale-105 cursor-pointer`;
+                
+                const hashPreview = node.hash.substring(0, 8) + '...' + node.hash.substring(node.hash.length - 8);
+                
+                nodeDiv.innerHTML = `
+                    <div class="text-xs text-gray-400 mb-1">${isLeaf ? 'LEAF' : (levelIndex === 0 ? 'ROOT' : 'NODE')} #${node.index}</div>
+                    <div class="text-xs text-green-400 font-mono">${hashPreview}</div>
+                `;
+                
+                nodeDiv.title = node.hash;
+                nodeDiv.addEventListener('click', () => {
+                    this.toast.show(`Hash: ${node.hash}`, 'info');
+                });
+                
+                levelDiv.appendChild(nodeDiv);
+            });
+            
+            treeContainer.appendChild(levelDiv);
+        });
+        
+        canvas.appendChild(treeContainer);
+    }
+
+    // Update Merkle tree stats display
+    updateMerkleStats(tree) {
+        const rootHashEl = document.getElementById('merkle-root-hash');
+        const totalLevelsEl = document.getElementById('merkle-total-levels');
+        const leafCountEl = document.getElementById('merkle-leaf-count');
+        const totalNodesEl = document.getElementById('merkle-total-nodes');
+        
+        if (rootHashEl) {
+            rootHashEl.textContent = tree.root ? (tree.root.substring(0, 16) + '...') : '-';
+            rootHashEl.title = tree.root;
+        }
+        if (totalLevelsEl) totalLevelsEl.textContent = tree.total_levels || '-';
+        if (leafCountEl) leafCountEl.textContent = tree.leaf_count || '-';
+        if (totalNodesEl) totalNodesEl.textContent = tree.total_nodes || '-';
+    }
+
+    // Populate proof selector dropdown
+    populateProofSelector(leaves) {
+        const select = document.getElementById('merkle-proof-leaf-select');
+        if (!select) return;
+        
+        select.innerHTML = '<option value="">Choose a leaf...</option>';
+        leaves.forEach((leaf, index) => {
+            const option = document.createElement('option');
+            option.value = index;
+            option.textContent = `Leaf ${index}: ${leaf.substring(0, 30)}...`;
+            select.appendChild(option);
+        });
+        
+        const panel = document.getElementById('merkle-proof-panel');
+        if (panel) panel.classList.remove('hidden');
+    }
+
+    // Generate proof for selected leaf
+    async handleGenerateProofForLeaf(leafIndex) {
+        if (!leafIndex || !this.currentMerkleLeaves) {
+            return;
+        }
+        
+        try {
+            const index = parseInt(leafIndex);
+            const result = await apiClient.generateMerkleProof(this.currentMerkleLeaves, index);
+            
+            if (result.success && result.proof) {
+                this.currentMerkleProof = result.proof;
+                this.displayProofResult(result.proof);
+            }
+        } catch (error) {
+            console.error('Proof generation error:', error);
+            this.toast.show('Failed to generate proof: ' + error.message, 'danger');
+        }
+    }
+
+    // Display proof verification result
+    displayProofResult(proof) {
+        const resultDiv = document.getElementById('merkle-proof-result');
+        if (!resultDiv) return;
+        
+        if (!proof.valid) {
+            resultDiv.innerHTML = '<div class="text-red-400">Invalid proof</div>';
+            return;
+        }
+        
+        let html = '<div class="space-y-2">';
+        html += `<div class="text-green-400">✓ Valid proof generated</div>`;
+        html += `<div class="text-xs text-gray-400">Proof length: ${proof.proof_length} hashes</div>`;
+        html += '<div class="text-xs text-gray-400">Proof path:</div>';
+        html += '<div class="bg-gray-900 rounded p-2 max-h-40 overflow-y-auto">';
+        
+        proof.proof.forEach((step, index) => {
+            const position = step.position === 'left' ? '←' : '→';
+            const hashPreview = step.hash.substring(0, 16) + '...';
+            html += `<div class="text-xs text-green-400 font-mono">${index + 1}. ${position} ${hashPreview}</div>`;
+        });
+        
+        html += '</div></div>';
+        resultDiv.innerHTML = html;
+    }
+
+    // Verify Merkle proof
+    async handleVerifyMerkleProof() {
+        if (!this.currentMerkleProof || !this.currentMerkleTree) {
+            this.toast.show('Please generate a proof first', 'danger');
+            return;
+        }
+        
+        try {
+            const result = await apiClient.verifyMerkleProof(
+                this.currentMerkleProof.leaf,
+                this.currentMerkleProof.proof,
+                this.currentMerkleProof.root
+            );
+            
+            if (result.success) {
+                const status = result.valid ? 'VALID ✓' : 'INVALID ✗';
+                const color = result.valid ? 'success' : 'danger';
+                this.toast.show(`Proof verification: ${status}`, color);
+            }
+        } catch (error) {
+            console.error('Proof verification error:', error);
+            this.toast.show('Failed to verify proof: ' + error.message, 'danger');
+        }
+    }
+
+    // Load Merkle tree from database
+    async handleLoadDbMerkleTree() {
+        try {
+            const result = await apiClient.getMerkleTreeStructure();
+            
+            if (result.success && result.tree) {
+                this.currentMerkleTree = result.tree;
+                
+                // Extract leaves if available
+                if (result.tree.leaves_data && result.tree.leaves_data.length > 0) {
+                    this.currentMerkleLeaves = result.tree.leaves_data.map(l => l.leaf_hash);
+                }
+                
+                this.visualizeMerkleTree(result.tree);
+                this.updateMerkleStats(result.tree);
+                
+                if (this.currentMerkleLeaves) {
+                    this.populateProofSelector(this.currentMerkleLeaves);
+                }
+                
+                this.toast.show('Loaded Merkle tree from database', 'success');
+            } else {
+                this.toast.show('No Merkle tree found in database', 'warning');
+            }
+        } catch (error) {
+            console.error('Load DB tree error:', error);
+            this.toast.show('Failed to load tree: ' + error.message, 'danger');
         }
     }
 

@@ -861,21 +861,76 @@
                         </div>
 
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                            <!-- Merkle Tree Demo -->
-                            <div class="bg-gray-900 border border-gray-700 rounded-lg p-6">
-                                <h2 class="text-lg font-semibold text-green-400 mb-4">MERKLE_TREE_DEMONSTRATION</h2>
-                                <div class="space-y-4">
-                                    <div>
-                                        <label class="block text-xs text-gray-400 mb-1">TRANSACTION_DATA</label>
-                                        <textarea id="merkle-transaction-data" class="w-full bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-sm text-green-400 focus:outline-none focus:border-green-500 transition-colors" rows="3" placeholder="Enter transaction data..."></textarea>
+                            <!-- Merkle Tree Visualization -->
+                            <div class="bg-gray-900 border border-gray-700 rounded-lg p-6 lg:col-span-2">
+                                <h2 class="text-lg font-semibold text-green-400 mb-4">MERKLE_TREE_VISUALIZATION</h2>
+                                
+                                <!-- Controls -->
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                                    <div class="md:col-span-2">
+                                        <label class="block text-xs text-gray-400 mb-1">TRANSACTION_LEAVES (one per line)</label>
+                                        <textarea id="merkle-leaves-input" class="w-full bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-sm text-green-400 focus:outline-none focus:border-green-500 transition-colors font-mono" rows="4" placeholder="tx1: Alice pays Bob 10 BTC&#10;tx2: Carol pays Dave 5 ETH&#10;tx3: Eve pays Frank 2 ADA&#10;tx4: Grace pays Henry 8 BTC">tx1: Alice pays Bob 10 BTC
+tx2: Carol pays Dave 5 ETH
+tx3: Eve pays Frank 2 ADA
+tx4: Grace pays Henry 8 BTC</textarea>
                                     </div>
-                                    <div>
-                                        <label class="block text-xs text-gray-400 mb-1">MERKLE_ROOT</label>
-                                        <div id="merkle-root-output" class="bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-sm text-green-400 font-mono text-xs break-all">Merkle root will appear here...</div>
+                                    <div class="flex flex-col space-y-2">
+                                        <button id="merkle-build-tree-btn" class="bg-green-500 hover:bg-green-400 text-black font-semibold py-2 px-4 rounded-md transition-colors">
+                                            BUILD_TREE
+                                        </button>
+                                        <button id="merkle-verify-proof-btn" class="bg-purple-500 hover:bg-purple-400 text-black font-semibold py-2 px-4 rounded-md transition-colors">
+                                            VERIFY_PROOF
+                                        </button>
+                                        <button id="merkle-load-db-btn" class="bg-blue-500 hover:bg-blue-400 text-black font-semibold py-2 px-4 rounded-md transition-colors">
+                                            LOAD_DB_TREE
+                                        </button>
                                     </div>
-                                    <button id="generate-merkle-btn" class="w-full bg-green-500 hover:bg-green-400 text-black font-semibold py-2 px-4 rounded-md transition-colors">
-                                        GENERATE_MERKLE_PROOF
-                                    </button>
+                                </div>
+
+                                <!-- Tree Visualization Canvas -->
+                                <div class="bg-gray-800 border border-gray-600 rounded-md p-6 mb-4 overflow-x-auto">
+                                    <div id="merkle-tree-canvas" class="min-h-[400px] flex items-center justify-center text-gray-500">
+                                        <div class="text-center">
+                                            <svg class="w-16 h-16 mx-auto mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                                            </svg>
+                                            Click BUILD_TREE to visualize
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Tree Stats -->
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                                    <div class="bg-gray-800 border border-gray-600 rounded-md p-3">
+                                        <div class="text-xs text-gray-400 mb-1">ROOT_HASH</div>
+                                        <div id="merkle-root-hash" class="text-xs text-green-400 font-mono break-all">-</div>
+                                    </div>
+                                    <div class="bg-gray-800 border border-gray-600 rounded-md p-3">
+                                        <div class="text-xs text-gray-400 mb-1">TOTAL_LEVELS</div>
+                                        <div id="merkle-total-levels" class="text-lg text-green-400 font-mono">-</div>
+                                    </div>
+                                    <div class="bg-gray-800 border border-gray-600 rounded-md p-3">
+                                        <div class="text-xs text-gray-400 mb-1">LEAF_COUNT</div>
+                                        <div id="merkle-leaf-count" class="text-lg text-green-400 font-mono">-</div>
+                                    </div>
+                                    <div class="bg-gray-800 border border-gray-600 rounded-md p-3">
+                                        <div class="text-xs text-gray-400 mb-1">TOTAL_NODES</div>
+                                        <div id="merkle-total-nodes" class="text-lg text-green-400 font-mono">-</div>
+                                    </div>
+                                </div>
+
+                                <!-- Proof Verification Panel -->
+                                <div id="merkle-proof-panel" class="bg-gray-800 border border-gray-600 rounded-md p-4 hidden">
+                                    <h3 class="text-sm font-semibold text-green-400 mb-3">MERKLE_PROOF_VERIFICATION</h3>
+                                    <div class="space-y-2">
+                                        <div>
+                                            <span class="text-xs text-gray-400">SELECT_LEAF:</span>
+                                            <select id="merkle-proof-leaf-select" class="ml-2 bg-gray-900 border border-gray-600 rounded px-2 py-1 text-sm text-green-400">
+                                                <option value="">Choose a leaf...</option>
+                                            </select>
+                                        </div>
+                                        <div id="merkle-proof-result" class="text-sm font-mono"></div>
+                                    </div>
                                 </div>
                             </div>
 

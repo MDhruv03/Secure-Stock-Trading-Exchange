@@ -1127,6 +1127,76 @@ class DatabaseManager:
             print(f"[DB] Error getting Merkle leaves: {str(e)}")
             return []
     
+    def get_merkle_tree_structure(self) -> Dict[str, Any]:
+        """
+        Get complete Merkle tree structure for visualization
+        """
+        try:
+            # Get all leaves
+            leaves_data = self.get_merkle_leaves()
+            
+            if not leaves_data:
+                return {
+                    "root": None,
+                    "levels": [],
+                    "total_nodes": 0,
+                    "leaf_count": 0
+                }
+            
+            # Extract just the hashes for tree building
+            leaf_hashes = [leaf["leaf_hash"] for leaf in leaves_data]
+            
+            # Build tree structure using crypto service
+            crypto_service = get_crypto_service()
+            tree_structure = crypto_service.build_merkle_tree_with_structure(leaf_hashes)
+            
+            # Enrich with transaction data
+            tree_structure["leaves_data"] = leaves_data
+            
+            return tree_structure
+        except Exception as e:
+            print(f"[DB] Error getting Merkle tree structure: {str(e)}")
+            return {
+                "root": None,
+                "levels": [],
+                "total_nodes": 0,
+                "leaf_count": 0
+            }
+    
+    def verify_merkle_tree_integrity(self) -> Dict[str, Any]:
+        """
+        Verify the integrity of the entire Merkle tree
+        """
+        try:
+            leaves = self.get_merkle_leaves()
+            
+            if not leaves:
+                return {
+                    "valid": True,
+                    "message": "No leaves in tree",
+                    "leaf_count": 0
+                }
+            
+            # Get leaf hashes
+            leaf_hashes = [leaf["leaf_hash"] for leaf in leaves]
+            
+            # Rebuild tree
+            crypto_service = get_crypto_service()
+            computed_root = crypto_service.create_merkle_root(leaf_hashes)
+            
+            return {
+                "valid": True,
+                "root": computed_root,
+                "leaf_count": len(leaves),
+                "message": "Tree integrity verified"
+            }
+        except Exception as e:
+            return {
+                "valid": False,
+                "error": str(e),
+                "message": "Tree integrity check failed"
+            }
+    
     def block_ip(self, ip_address: str, reason: str = None, duration_hours: int = 24) -> bool:
         """
         Block an IP address

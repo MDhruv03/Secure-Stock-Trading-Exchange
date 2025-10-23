@@ -332,6 +332,49 @@ class ApiClient {
         return result;
     }
 
+    async buildMerkleTree(leaves) {
+        const result = await this.request('/api/crypto/merkle/build_tree', {
+            method: 'POST',
+            body: JSON.stringify({ leaves })
+        });
+        
+        return result;
+    }
+
+    async generateMerkleProof(leaves, leafIndex) {
+        const result = await this.request('/api/crypto/merkle/generate_proof', {
+            method: 'POST',
+            body: JSON.stringify({ leaves, leaf_index: leafIndex })
+        });
+        
+        return result;
+    }
+
+    async verifyMerkleProof(leaf, proof, root) {
+        const result = await this.request('/api/crypto/merkle/verify_proof', {
+            method: 'POST',
+            body: JSON.stringify({ leaf, proof, root })
+        });
+        
+        return result;
+    }
+
+    async getMerkleTreeStructure() {
+        const result = await this.request('/api/crypto/merkle/tree_structure', {
+            method: 'GET'
+        });
+        
+        return result;
+    }
+
+    async verifyMerkleTreeIntegrity() {
+        const result = await this.request('/api/crypto/merkle/verify_integrity', {
+            method: 'GET'
+        });
+        
+        return result;
+    }
+
     async hmacSign(data) {
         const result = await this.request('/api/crypto/hmac/sign', {
             method: 'POST',

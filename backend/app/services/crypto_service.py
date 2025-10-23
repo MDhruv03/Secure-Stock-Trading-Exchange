@@ -251,6 +251,153 @@ class CryptoService:
         
         return current_level[0]
     
+    def build_merkle_tree_with_structure(self, leaves: list) -> Dict[str, Any]:
+        """
+        Build complete Merkle tree with full structure for visualization
+        Returns tree structure with all nodes and levels
+        """
+        if not leaves:
+            empty_hash = hashlib.sha256(b"").hexdigest()
+            return {
+                "root": empty_hash,
+                "levels": [[{"hash": empty_hash, "index": 0, "isLeaf": True}]],
+                "total_levels": 1,
+                "total_nodes": 1,
+                "leaf_count": 0
+            }
+        
+        # Initialize tree structure
+        tree_levels = []
+        current_level = []
+        
+        # Add leaf level
+        for i, leaf in enumerate(leaves):
+            current_level.append({
+                "hash": leaf,
+                "index": i,
+                "isLeaf": True,
+                "left_child": None,
+                "right_child": None
+            })
+        
+        tree_levels.append(current_level)
+        
+        # Build intermediate levels
+        while len(current_level) > 1:
+            next_level = []
+            
+            for i in range(0, len(current_level), 2):
+                left_node = current_level[i]
+                right_node = current_level[i+1] if i+1 < len(current_level) else current_level[i]
+                
+                # Create parent hash
+                combined = left_node["hash"] + right_node["hash"]
+                parent_hash = hashlib.sha256(combined.encode('utf-8')).hexdigest()
+                
+                parent_node = {
+                    "hash": parent_hash,
+                    "index": i // 2,
+                    "isLeaf": False,
+                    "left_child": left_node["hash"],
+                    "right_child": right_node["hash"]
+                }
+                
+                next_level.append(parent_node)
+            
+            tree_levels.append(next_level)
+            current_level = next_level
+        
+        # Calculate total nodes
+        total_nodes = sum(len(level) for level in tree_levels)
+        
+        return {
+            "root": tree_levels[-1][0]["hash"],
+            "levels": tree_levels,
+            "total_levels": len(tree_levels),
+            "total_nodes": total_nodes,
+            "leaf_count": len(leaves)
+        }
+    
+    def generate_merkle_proof(self, leaves: list, leaf_index: int) -> Dict[str, Any]:
+        """
+        Generate Merkle proof for a specific leaf
+        Proof can be used to verify the leaf is part of the tree without revealing all leaves
+        """
+        if not leaves or leaf_index < 0 or leaf_index >= len(leaves):
+            return {
+                "valid": False,
+                "error": "Invalid leaf index"
+            }
+        
+        proof_path = []
+        current_level = leaves[:]
+        current_index = leaf_index
+        
+        # Build proof path from leaf to root
+        while len(current_level) > 1:
+            next_level = []
+            
+            for i in range(0, len(current_level), 2):
+                left = current_level[i]
+                right = current_level[i+1] if i+1 < len(current_level) else left
+                
+                # If current index is at this pair, add sibling to proof
+                if i == current_index or i+1 == current_index:
+                    if i == current_index:
+                        # Current is left, add right sibling
+                        proof_path.append({
+                            "hash": right,
+                            "position": "right"
+                        })
+                    else:
+                        # Current is right, add left sibling
+                        proof_path.append({
+                            "hash": left,
+                            "position": "left"
+                        })
+                    
+                    current_index = i // 2
+                
+                # Create parent hash
+                combined = left + right
+                next_level.append(hashlib.sha256(combined.encode('utf-8')).hexdigest())
+            
+            current_level = next_level
+        
+        return {
+            "valid": True,
+            "leaf": leaves[leaf_index],
+            "leaf_index": leaf_index,
+            "root": current_level[0],
+            "proof": proof_path,
+            "proof_length": len(proof_path)
+        }
+    
+    def verify_merkle_proof(self, leaf: str, proof: list, root: str) -> bool:
+        """
+        Verify a Merkle proof
+        Returns True if the proof is valid, False otherwise
+        """
+        try:
+            current_hash = leaf
+            
+            # Process proof path
+            for step in proof:
+                sibling_hash = step["hash"]
+                position = step["position"]
+                
+                if position == "left":
+                    combined = sibling_hash + current_hash
+                else:  # right
+                    combined = current_hash + sibling_hash
+                
+                current_hash = hashlib.sha256(combined.encode('utf-8')).hexdigest()
+            
+            # Check if computed root matches expected root
+            return current_hash == root
+        except Exception:
+            return False
+    
     def generate_homomorphic_keypair(self) -> Tuple[int, int]:
         """
         Generate a simple homomorphic encryption keypair (simplified for demo)

@@ -46,6 +46,18 @@ class ChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str
 
+class MerkleTreeRequest(BaseModel):
+    leaves: List[str]
+
+class MerkleProofRequest(BaseModel):
+    leaves: List[str]
+    leaf_index: int
+
+class MerkleVerifyRequest(BaseModel):
+    leaf: str
+    proof: List[Dict]
+    root: str
+
 ## =========================
 # Dependency Injection & Auth Helpers
 ## =========================
@@ -779,6 +791,83 @@ async def generate_merkle_root(leaves: List[str], request: Request):
     merkle_root = crypto_service.create_merkle_root(leaves)
     
     return {"merkle_root": merkle_root}
+
+@router.post("/api/crypto/merkle/build_tree")
+async def build_merkle_tree(body: MerkleTreeRequest, request: Request):
+    """Build complete Merkle tree with structure for visualization"""
+    try:
+        crypto_service = get_crypto_service()
+        tree_structure = crypto_service.build_merkle_tree_with_structure(body.leaves)
+        
+        return {
+            "success": True,
+            "tree": tree_structure
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to build Merkle tree: {str(e)}")
+
+@router.post("/api/crypto/merkle/generate_proof")
+async def generate_merkle_proof_endpoint(body: MerkleProofRequest, request: Request):
+    """Generate Merkle proof for a specific leaf"""
+    try:
+        crypto_service = get_crypto_service()
+        proof = crypto_service.generate_merkle_proof(body.leaves, body.leaf_index)
+        
+        if not proof.get("valid", False):
+            raise HTTPException(status_code=400, detail=proof.get("error", "Invalid proof"))
+        
+        return {
+            "success": True,
+            "proof": proof
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate proof: {str(e)}")
+
+@router.post("/api/crypto/merkle/verify_proof")
+async def verify_merkle_proof_endpoint(body: MerkleVerifyRequest, request: Request):
+    """Verify a Merkle proof"""
+    try:
+        crypto_service = get_crypto_service()
+        is_valid = crypto_service.verify_merkle_proof(body.leaf, body.proof, body.root)
+        
+        return {
+            "success": True,
+            "valid": is_valid,
+            "leaf": body.leaf,
+            "root": body.root
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to verify proof: {str(e)}")
+
+@router.get("/api/crypto/merkle/tree_structure")
+async def get_merkle_tree_structure(current_user: dict = Depends(get_current_user)):
+    """Get complete Merkle tree structure from database"""
+    try:
+        db = get_db_manager()
+        tree_structure = db.get_merkle_tree_structure()
+        
+        return {
+            "success": True,
+            "tree": tree_structure
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get tree structure: {str(e)}")
+
+@router.get("/api/crypto/merkle/verify_integrity")
+async def verify_merkle_tree_integrity(current_user: dict = Depends(get_current_user)):
+    """Verify integrity of the Merkle tree in database"""
+    try:
+        db = get_db_manager()
+        integrity_check = db.verify_merkle_tree_integrity()
+        
+        return {
+            "success": True,
+            "integrity": integrity_check
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to verify integrity: {str(e)}")
 
 @router.post("/api/crypto/hmac/sign")
 async def hmac_sign(data: dict, request: Request):
