@@ -144,6 +144,121 @@ The **Secure Stock Trading Exchange Platform** is a production-ready, enterprise
 
 #### Intrusion Detection System (IDS)
 The platform includes a comprehensive IDS that monitors for:
+---
+
+## 🛡️ Cryptographic Techniques: Usage, Benefits & Security Simulation
+
+### Overview
+This platform integrates multiple cryptographic primitives to ensure confidentiality, integrity, authentication, and non-repudiation for all trading and security operations. Each technique is chosen for its specific strengths and is mapped to a concrete use-case in the system.
+
+### Cryptographic Techniques & Their Usage
+
+#### 1. AES-256-GCM (Symmetric Encryption)
+- **Where Used:**
+  - Encrypting sensitive database fields (user credentials, transaction details)
+  - Securing session data and API payloads
+- **Benefits:**
+  - High-speed, strong confidentiality
+  - Authenticated encryption (integrity + privacy)
+- **Purpose:**
+  - Prevents unauthorized data access and tampering
+
+#### 2. RSA-2048 (Asymmetric Encryption)
+- **Where Used:**
+  - Key exchange between backend and clients
+  - Secure transmission of session keys
+- **Benefits:**
+  - Enables secure communication over untrusted networks
+  - Facilitates digital signatures
+- **Purpose:**
+  - Ensures only intended parties can decrypt sensitive information
+
+#### 3. ECC (SECP256R1) (Elliptic Curve Cryptography)
+- **Where Used:**
+  - Digital signatures for transaction and API requests
+  - Verifying authenticity of critical operations
+- **Benefits:**
+  - Strong security with smaller key sizes
+  - Efficient for mobile and web clients
+- **Purpose:**
+  - Guarantees non-repudiation and authenticity of trades and actions
+
+#### 4. HMAC (Hash-based Message Authentication Code)
+- **Where Used:**
+  - API request authentication
+  - Message integrity checks
+- **Benefits:**
+  - Fast, simple, and robust against forgery
+- **Purpose:**
+  - Ensures messages are not altered in transit
+
+#### 5. PBKDF2-HMAC (Password Hashing)
+- **Where Used:**
+  - User password storage
+- **Benefits:**
+  - Resistant to brute-force and rainbow table attacks
+- **Purpose:**
+  - Protects user credentials even if database is compromised
+
+#### 6. Merkle Tree (Data Integrity & Proofs)
+- **Where Used:**
+  - Verifying integrity of transaction history and audit logs
+  - Interactive frontend visualization for proof generation/verification
+- **Benefits:**
+  - Efficient integrity verification of large datasets
+  - Enables zero-knowledge proofs for data inclusion
+- **Purpose:**
+  - Detects tampering and provides cryptographic audit trails
+
+#### 7. SHA-256/SHA-512 (Hashing)
+- **Where Used:**
+  - Hashing transactions, orders, and user data
+  - Merkle tree node computation
+- **Benefits:**
+  - Collision-resistant, fast
+- **Purpose:**
+  - Ensures data integrity and supports cryptographic proofs
+
+### How These Techniques Benefit the Platform
+- **Confidentiality:** Only authorized users can access sensitive data
+- **Integrity:** All transactions and logs are tamper-evident
+- **Authentication:** Every request and trade is cryptographically signed
+- **Non-repudiation:** Users cannot deny their actions (digital signatures)
+- **Auditability:** Merkle trees and logs provide verifiable audit trails
+- **Resilience:** Even if one layer is breached, others remain secure
+
+### Red Team vs Blue Team Simulation
+
+#### Red Team (Attack Simulation)
+- **Purpose:** Simulate real-world attacks to test platform defenses
+- **Techniques Simulated:**
+  - SQL Injection (attempt to bypass input validation)
+  - Brute Force (rapid login attempts)
+  - Replay Attack (reuse of old requests/nonces)
+  - MITM (tampering with signatures or payloads)
+- **How:**
+  - `security/red_team/attack_simulator.py` automates these attacks
+  - Frontend simulation buttons trigger attack scenarios for testing
+
+#### Blue Team (Defense System)
+- **Purpose:** Detect, block, and log attacks in real time
+- **Techniques Used:**
+  - Pattern-based SQL injection detection
+  - Rate limiting and IP blocking for brute force
+  - Nonce and timestamp validation for replay attacks
+  - Digital signature verification for MITM
+  - Merkle tree integrity checks for data tampering
+- **How:**
+  - `security/blue_team/defense_system.py` implements all detection and response logic
+  - Security events are logged and visualized in the dashboard
+
+### Simulation Workflow
+1. **User triggers attack simulation via frontend (Simulations tab)**
+2. **Red Team module executes attack scenario**
+3. **Blue Team defense system detects, blocks, and logs the event**
+4. **Security dashboard updates with event details and recommended actions**
+
+---
 
 **SQL Injection Detection**
 ```python
