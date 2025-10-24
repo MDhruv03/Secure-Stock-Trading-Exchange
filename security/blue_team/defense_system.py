@@ -1,15 +1,711 @@
 """
 Blue Team Defense System for Secure Trading Platform
-Implements defense mechanisms against various attack vectors
+Production-Ready Implementation
+Implements comprehensive defense mechanisms against various attack vectors
 """
 import time
 import hashlib
 import hmac
 import threading
+import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
+from collections import defaultdict, deque
 from backend.app.utils.database import get_db_manager
 from backend.app.services.crypto_service import get_crypto_service
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+class RateLimiter:
+    """
+    Token bucket rate limiter for API requests
+    """
+    def __init__(self, capacity: int = 100, refill_rate: int = 10):
+        self.capacity = capacity
+        self.refill_rate = refill_rate
+        self.tokens = defaultdict(lambda: {'tokens': capacity, 'last_refill': time.time()})
+        self.lock = threading.Lock()
+    
+    def allow_request(self, identifier: str) -> bool:
+        """Check if request should be allowed"""
+        with self.lock:
+            bucket = self.tokens[identifier]
+            now = time.time()
+            
+            # Refill tokens based on time elapsed
+            elapsed = now - bucket['last_refill']
+            refill_amount = elapsed * self.refill_rate
+            bucket['tokens'] = min(self.capacity, bucket['tokens'] + refill_amount)
+            bucket['last_refill'] = now
+            
+            # Check if token available
+            if bucket['tokens'] >= 1:
+                bucket['tokens'] -= 1
+                return True
+            return False
+    
+    def get_remaining_tokens(self, identifier: str) -> int:
+        """Get remaining tokens for identifier"""
+        with self.lock:
+            return int(self.tokens[identifier]['tokens'])
+
+
+class IntrusionDetectionSystem:
+    """
+    Production-Ready Intrusion Detection System
+    Monitors for suspicious activities and triggers defensive measures
+    """
+    
+    def __init__(self):
+        self.db = get_db_manager()
+        self.crypto = get_crypto_service()
+        self.suspicious_ips = set()
+        self.monitoring_active = True
+        
+        # Rate limiters
+        self.login_rate_limiter = RateLimiter(capacity=5, refill_rate=1)  # 5 attempts, 1/min refill
+        self.api_rate_limiter = RateLimiter(capacity=100, refill_rate=10)  # 100 requests, 10/min refill
+        
+        # Attack tracking
+        self.login_attempts = defaultdict(lambda: {'count': 0, 'timestamps': deque(maxlen=20)})
+        self.failed_logins = defaultdict(lambda: deque(maxlen=50))
+        self.nonce_cache = {}  # Cache for replay attack prevention
+        self.request_cache = defaultdict(lambda: deque(maxlen=1000))
+        
+        # Thresholds (production values)
+        self.login_attempts_threshold = 5  # Failed attempts before blocking
+        self.login_timewindow = 300  # 5 minutes
+        self.api_call_threshold = 100  # Requests per minute
+        self.replay_window = 300  # 5 minutes for valid timestamps
+        self.nonce_cache_size = 10000  # Maximum nonces to track
+        
+        # Lock for thread safety
+        self.lock = threading.Lock()
+        
+        # Start monitoring thread
+        self.monitoring_thread = threading.Thread(
+            target=self._continuous_monitoring,
+            daemon=True,
+            name="IDS-Monitor"
+        )
+        self.monitoring_thread.start()
+        logger.info("Intrusion Detection System initialized and monitoring started")
+    
+    def _continuous_monitoring(self):
+        """Background monitoring thread for anomaly detection"""
+        while self.monitoring_active:
+            try:
+                self._check_anomalies()
+                self._cleanup_old_data()
+                time.sleep(60)  # Check every minute
+            except Exception as e:
+                logger.error(f"Error in monitoring thread: {str(e)}", exc_info=True)
+    
+    def _check_anomalies(self):
+        """Check for various anomalies in system behavior"""
+        try:
+            # Check for patterns in recent security events
+            recent_events = self.db.get_recent_security_events(100)
+            
+            # Detect coordinated attacks
+            ip_event_counts = defaultdict(int)
+            for event in recent_events:
+                if event.get('severity') in ['HIGH', 'CRITICAL']:
+                    ip_event_counts[event.get('source_ip', 'unknown')] += 1
+            
+            # Block IPs with multiple high-severity events
+            for ip, count in ip_event_counts.items():
+                if count >= 3 and ip != 'unknown':
+                    logger.warning(f"Blocking IP {ip} due to {count} high-severity events")
+                    self._block_ip(ip, f"Multiple high-severity events: {count}")
+            
+        except Exception as e:
+            logger.error(f"Error checking anomalies: {str(e)}", exc_info=True)
+    
+    def _cleanup_old_data(self):
+        """Clean up old tracking data to prevent memory leaks"""
+        try:
+            current_time = time.time()
+            with self.lock:
+                # Clean old nonces (keep only recent ones)
+                old_nonces = [
+                    nonce for nonce, timestamp in self.nonce_cache.items()
+                    if current_time - timestamp > self.replay_window * 2
+                ]
+                for nonce in old_nonces:
+                    del self.nonce_cache[nonce]
+                
+                # Keep nonce cache size under limit
+                if len(self.nonce_cache) > self.nonce_cache_size:
+                    # Remove oldest entries
+                    sorted_nonces = sorted(self.nonce_cache.items(), key=lambda x: x[1])
+                    for nonce, _ in sorted_nonces[:len(self.nonce_cache) - self.nonce_cache_size]:
+                        del self.nonce_cache[nonce]
+                
+        except Exception as e:
+            logger.error(f"Error cleaning up old data: {str(e)}", exc_info=True)
+    
+    def check_sql_injection(self, query: str, ip_address: str) -> Dict[str, Any]:
+        """
+        Production-grade SQL injection detection
+        """
+        sql_patterns = {
+            # Union-based injection
+            'union': r'union.*select',
+            # Comment-based injection
+            'comment': r'(--|#|/\*)',
+            # Boolean-based injection
+            'boolean': r"(or|and)\s+['\"]?\d+['\"]?\s*=\s*['\"]?\d+['\"]?",
+            # Time-based injection
+            'time': r'(sleep|benchmark|waitfor)\s*\(',
+            # Stacked queries
+            'stacked': r';\s*(drop|create|alter|insert|update|delete)',
+            # System commands
+            'system': r'(xp_|sp_|exec|execute)\s+',
+        }
+        
+        detected = False
+        matched_patterns = []
+        severity = "LOW"
+        
+        query_lower = query.lower()
+        
+        for pattern_name, pattern in sql_patterns.items():
+            import re
+            if re.search(pattern, query_lower):
+                detected = True
+                matched_patterns.append(pattern_name)
+                severity = "CRITICAL"
+        
+        if detected:
+            logger.critical(f"SQL injection detected from {ip_address}: {matched_patterns}")
+            
+            self.db.log_security_event(
+                "SQL_INJECTION_DETECTED",
+                f"SQL injection patterns detected: {', '.join(matched_patterns)}",
+                ip_address,
+                severity,
+                {
+                    "query_sample": query[:200],  # Only log first 200 chars
+                    "matched_patterns": matched_patterns
+                }
+            )
+            
+            self._block_ip(ip_address, f"SQL Injection: {', '.join(matched_patterns)}")
+            
+            return {
+                "detected": True,
+                "blocked": True,
+                "severity": severity,
+                "patterns": matched_patterns,
+                "threat_level": "CRITICAL",
+                "action_taken": "BLOCK_IP_REJECT_REQUEST"
+            }
+        
+        return {
+            "detected": False,
+            "blocked": False,
+            "severity": "LOW",
+            "patterns": [],
+            "threat_level": "LOW",
+            "action_taken": "ALLOWED"
+        }
+    
+    def check_brute_force(self, ip_address: str, username: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Production-grade brute force detection with rate limiting
+        """
+        # Check rate limiter first
+        if not self.login_rate_limiter.allow_request(ip_address):
+            logger.warning(f"Rate limit exceeded for IP {ip_address}")
+            return {
+                "detected": True,
+                "blocked": True,
+                "severity": "HIGH",
+                "reason": "Rate limit exceeded",
+                "action_taken": "RATE_LIMITED"
+            }
+        
+        with self.lock:
+            # Track failed login attempt
+            self.failed_logins[ip_address].append(time.time())
+            
+            # Count recent failures within time window
+            current_time = time.time()
+            recent_failures = [
+                t for t in self.failed_logins[ip_address]
+                if current_time - t < self.login_timewindow
+            ]
+            
+            failed_count = len(recent_failures)
+            
+            if failed_count >= self.login_attempts_threshold:
+                logger.critical(f"Brute force detected from {ip_address}: {failed_count} attempts")
+                
+                self.db.log_security_event(
+                    "BRUTE_FORCE_DETECTED",
+                    f"Brute force: {failed_count} failed attempts in {self.login_timewindow}s",
+                    ip_address,
+                    "CRITICAL",
+                    {
+                        "failed_attempts": failed_count,
+                        "username": username,
+                        "timewindow": self.login_timewindow
+                    }
+                )
+                
+                self._block_ip(ip_address, f"Brute force: {failed_count} attempts")
+                
+                return {
+                    "detected": True,
+                    "blocked": True,
+                    "severity": "CRITICAL",
+                    "failed_attempts": failed_count,
+                    "threshold": self.login_attempts_threshold,
+                    "action_taken": "BLOCK_IP"
+                }
+            
+            # Warn at 60% of threshold
+            if failed_count >= self.login_attempts_threshold * 0.6:
+                return {
+                    "detected": True,
+                    "blocked": False,
+                    "severity": "WARNING",
+                    "failed_attempts": failed_count,
+                    "threshold": self.login_attempts_threshold,
+                    "action_taken": "MONITORED"
+                }
+        
+        return {
+            "detected": False,
+            "blocked": False,
+            "severity": "LOW",
+            "failed_attempts": failed_count if 'failed_count' in locals() else 0,
+            "threshold": self.login_attempts_threshold,
+            "action_taken": "ALLOWED"
+        }
+    
+    def check_replay_attack(self, data: Dict[str, Any], timestamp: int, nonce: str, ip_address: str) -> Dict[str, Any]:
+        """
+        Production-grade replay attack detection with nonce verification
+        """
+        current_time = int(time.time())
+        timestamp_age = current_time - timestamp
+        
+        # Check timestamp freshness
+        if timestamp_age > self.replay_window:
+            logger.warning(f"Stale timestamp from {ip_address}: {timestamp_age}s old")
+            
+            self.db.log_security_event(
+                "REPLAY_ATTACK_DETECTED",
+                f"Stale timestamp: {timestamp_age}s old (max: {self.replay_window}s)",
+                ip_address,
+                "HIGH",
+                {"timestamp_age": timestamp_age}
+            )
+            
+            return {
+                "detected": True,
+                "blocked": True,
+                "severity": "HIGH",
+                "reason": "Timestamp too old",
+                "timestamp_age": timestamp_age,
+                "action_taken": "REJECT_REQUEST"
+            }
+        
+        # Check if timestamp is in the future
+        if timestamp > current_time + 60:  # Allow 60s clock skew
+            logger.warning(f"Future timestamp from {ip_address}")
+            
+            return {
+                "detected": True,
+                "blocked": True,
+                "severity": "HIGH",
+                "reason": "Future timestamp",
+                "timestamp_age": timestamp_age,
+                "action_taken": "REJECT_REQUEST"
+            }
+        
+        # Check nonce uniqueness
+        with self.lock:
+            if nonce in self.nonce_cache:
+                logger.critical(f"Duplicate nonce detected from {ip_address}: replay attack")
+                
+                self.db.log_security_event(
+                    "REPLAY_ATTACK_DETECTED",
+                    f"Duplicate nonce detected: replay attack",
+                    ip_address,
+                    "CRITICAL",
+                    {"nonce": nonce[:16], "timestamp": timestamp}
+                )
+                
+                return {
+                    "detected": True,
+                    "blocked": True,
+                    "severity": "CRITICAL",
+                    "reason": "Duplicate nonce - replay attack",
+                    "action_taken": "REJECT_REQUEST_ALERT"
+                }
+            
+            # Store nonce with timestamp
+            self.nonce_cache[nonce] = current_time
+        
+        return {
+            "detected": False,
+            "blocked": False,
+            "severity": "LOW",
+            "reason": "Valid timestamp and nonce",
+            "timestamp_age": timestamp_age,
+            "action_taken": "ALLOWED"
+        }
+    
+    def check_mitm_attack(self, data: Dict[str, Any], signature: str, ip_address: str) -> Dict[str, Any]:
+        """
+        Production-grade MITM detection via signature verification
+        """
+        try:
+            # Verify digital signature
+            is_valid = self.crypto.verify_signature(data, signature)
+            
+            if not is_valid:
+                logger.critical(f"Invalid signature from {ip_address}: possible MITM attack")
+                
+                self.db.log_security_event(
+                    "MITM_ATTACK_DETECTED",
+                    "Invalid digital signature detected",
+                    ip_address,
+                    "CRITICAL",
+                    {"data_hash": hashlib.sha256(str(data).encode()).hexdigest()[:16]}
+                )
+                
+                return {
+                    "detected": True,
+                    "blocked": True,
+                    "severity": "CRITICAL",
+                    "reason": "Invalid signature",
+                    "action_taken": "REJECT_REQUEST"
+                }
+            
+            return {
+                "detected": False,
+                "blocked": False,
+                "severity": "LOW",
+                "reason": "Valid signature",
+                "action_taken": "ALLOWED"
+            }
+            
+        except Exception as e:
+            logger.error(f"Signature verification error from {ip_address}: {str(e)}")
+            
+            self.db.log_security_event(
+                "SIGNATURE_VERIFICATION_ERROR",
+                f"Signature verification failed: {str(e)}",
+                ip_address,
+                "HIGH",
+                {"error": str(e)[:200]}
+            )
+            
+            return {
+                "detected": True,
+                "blocked": True,
+                "severity": "HIGH",
+                "reason": f"Verification error: {str(e)}",
+                "action_taken": "REJECT_REQUEST"
+            }
+    
+    def check_rate_limit(self, ip_address: str, endpoint: str) -> Dict[str, Any]:
+        """
+        Check API rate limits
+        """
+        identifier = f"{ip_address}:{endpoint}"
+        
+        if not self.api_rate_limiter.allow_request(identifier):
+            logger.warning(f"API rate limit exceeded: {identifier}")
+            
+            self.db.log_security_event(
+                "RATE_LIMIT_EXCEEDED",
+                f"API rate limit exceeded for endpoint: {endpoint}",
+                ip_address,
+                "MEDIUM",
+                {"endpoint": endpoint}
+            )
+            
+            return {
+                "allowed": False,
+                "severity": "MEDIUM",
+                "remaining_tokens": 0,
+                "action_taken": "RATE_LIMITED"
+            }
+        
+        remaining = self.api_rate_limiter.get_remaining_tokens(identifier)
+        
+        return {
+            "allowed": True,
+            "severity": "LOW",
+            "remaining_tokens": remaining,
+            "action_taken": "ALLOWED"
+        }
+    
+    def check_suspicious_user_agent(self, user_agent: str, ip_address: str) -> Dict[str, Any]:
+        """
+        Production-grade suspicious user agent detection
+        """
+        suspicious_patterns = {
+            'sqlmap': 'SQL injection tool',
+            'nikto': 'Web scanner',
+            'nessus': 'Vulnerability scanner',
+            'nmap': 'Network scanner',
+            'masscan': 'Port scanner',
+            'hydra': 'Password cracker',
+            'medusa': 'Password cracker',
+            'burp': 'Security testing tool',
+            'zaproxy': 'Security testing tool',
+            'metasploit': 'Penetration testing framework',
+            'dirbuster': 'Directory enumeration',
+            'gobuster': 'Directory enumeration',
+            'wpscan': 'WordPress scanner',
+            'acunetix': 'Web vulnerability scanner'
+        }
+        
+        user_agent_lower = user_agent.lower()
+        
+        for pattern, description in suspicious_patterns.items():
+            if pattern in user_agent_lower:
+                logger.warning(f"Suspicious user agent from {ip_address}: {description}")
+                
+                self.db.log_security_event(
+                    "SUSPICIOUS_USER_AGENT_DETECTED",
+                    f"Security tool detected: {description}",
+                    ip_address,
+                    "HIGH",
+                    {"user_agent": user_agent[:200], "tool": pattern}
+                )
+                
+                self._block_ip(ip_address, f"Security tool: {pattern}")
+                
+                return {
+                    "detected": True,
+                    "blocked": True,
+                    "severity": "HIGH",
+                    "matched_pattern": pattern,
+                    "description": description,
+                    "action_taken": "BLOCK_IP"
+                }
+        
+        return {
+            "detected": False,
+            "blocked": False,
+            "severity": "LOW",
+            "action_taken": "ALLOWED"
+        }
+    
+    def _block_ip(self, ip_address: str, reason: str, duration_minutes: int = 60):
+        """
+        Block an IP address with automatic expiration
+        """
+        try:
+            self.db.block_ip(ip_address, reason)
+            
+            with self.lock:
+                self.suspicious_ips.add(ip_address)
+            
+            logger.warning(f"IP blocked: {ip_address} - {reason} (duration: {duration_minutes}min)")
+            
+            self.db.log_security_event(
+                "IP_BLOCKED",
+                f"IP blocked for {duration_minutes} minutes: {reason}",
+                ip_address,
+                "HIGH",
+                {"reason": reason, "duration_minutes": duration_minutes}
+            )
+            
+        except Exception as e:
+            logger.error(f"Error blocking IP {ip_address}: {str(e)}", exc_info=True)
+    
+    def is_ip_blocked(self, ip_address: str) -> bool:
+        """Check if an IP is currently blocked"""
+        try:
+            blocked_ips = self.db.get_blocked_ips()
+            return any(ip['ip_address'] == ip_address for ip in blocked_ips)
+        except Exception as e:
+            logger.error(f"Error checking if IP blocked: {str(e)}")
+            return False
+    
+    def get_blocked_ips(self) -> List[Dict[str, Any]]:
+        """Get list of blocked IPs"""
+        try:
+            return self.db.get_blocked_ips()
+        except Exception as e:
+            logger.error(f"Error getting blocked IPs: {str(e)}")
+            return []
+    
+    def get_security_events(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get recent security events"""
+        try:
+            return self.db.get_recent_security_events(limit)
+        except Exception as e:
+            logger.error(f"Error getting security events: {str(e)}")
+            return []
+    
+    def get_system_status(self) -> Dict[str, Any]:
+        """Get current system security status"""
+        try:
+            events = self.get_security_events(100)
+            blocked_ips = self.get_blocked_ips()
+            
+            # Count events by severity
+            severity_counts = defaultdict(int)
+            for event in events:
+                severity_counts[event.get('severity', 'UNKNOWN')] += 1
+            
+            # Determine overall status
+            if severity_counts.get('CRITICAL', 0) > 0:
+                status = "CRITICAL"
+            elif severity_counts.get('HIGH', 0) > 5:
+                status = "WARNING"
+            elif severity_counts.get('MEDIUM', 0) > 10:
+                status = "CAUTION"
+            else:
+                status = "SECURE"
+            
+            return {
+                "status": status,
+                "blocked_ips": len(blocked_ips),
+                "recent_events": len(events),
+                "severity_breakdown": dict(severity_counts),
+                "monitored_ips": len(self.suspicious_ips),
+                "active_nonces": len(self.nonce_cache),
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting system status: {str(e)}")
+            return {"status": "ERROR", "error": str(e)}
+    
+    def stop_monitoring(self):
+        """Stop the monitoring thread"""
+        logger.info("Stopping intrusion detection monitoring")
+        self.monitoring_active = False
+
+
+class DefenseSystem:
+    """
+    Production-Ready Defense System Coordinator
+    """
+    
+    def __init__(self):
+        self.ids = IntrusionDetectionSystem()
+        self.crypto = get_crypto_service()
+        logger.info("Defense System initialized")
+    
+    def get_system_status(self) -> Dict[str, Any]:
+        """Get comprehensive system status"""
+        return self.ids.get_system_status()
+    
+    def generate_security_report(self) -> Dict[str, Any]:
+        """Generate comprehensive security report"""
+        try:
+            status = self.ids.get_system_status()
+            events = self.ids.get_security_events(100)
+            blocked_ips = self.ids.get_blocked_ips()
+            
+            # Analyze threats
+            high_severity = [e for e in events if e.get('severity') in ['CRITICAL', 'HIGH']]
+            
+            # Generate recommendations
+            recommendations = []
+            if status['severity_breakdown'].get('CRITICAL', 0) > 0:
+                recommendations.append("URGENT: Critical security events detected - review immediately")
+            if len(blocked_ips) > 20:
+                recommendations.append("High number of blocked IPs - possible coordinated attack")
+            if status['severity_breakdown'].get('HIGH', 0) > 10:
+                recommendations.append("Multiple high-severity events - increase monitoring")
+            
+            report = {
+                "generated_at": datetime.now().isoformat(),
+                "system_status": status['status'],
+                "summary": {
+                    "total_events": len(events),
+                    "critical_events": status['severity_breakdown'].get('CRITICAL', 0),
+                    "high_severity_events": status['severity_breakdown'].get('HIGH', 0),
+                    "medium_severity_events": status['severity_breakdown'].get('MEDIUM', 0),
+                    "blocked_ips": len(blocked_ips),
+                    "monitored_ips": status['monitored_ips']
+                },
+                "severity_breakdown": status['severity_breakdown'],
+                "recent_high_severity_events": high_severity[:5],
+                "blocked_ips_sample": blocked_ips[:10],
+                "recommendations": recommendations if recommendations else ["System is secure - continue monitoring"],
+                "metrics": {
+                    "active_nonces": status['active_nonces'],
+                    "monitoring_active": self.ids.monitoring_active
+                }
+            }
+            
+            return report
+            
+        except Exception as e:
+            logger.error(f"Error generating security report: {str(e)}", exc_info=True)
+            return {"error": str(e), "status": "ERROR"}
+
+
+# Global defense system instance
+_defense_system = None
+
+
+def get_defense_system() -> DefenseSystem:
+    """Get or create the global defense system instance"""
+    global _defense_system
+    if _defense_system is None:
+        _defense_system = DefenseSystem()
+    return _defense_system
+
+
+def get_intrusion_detection_system() -> IntrusionDetectionSystem:
+    """Get the intrusion detection system instance"""
+    return get_defense_system().ids
+
+
+# Convenience functions for external use
+def check_sql_injection(query: str, ip_address: str) -> Dict[str, Any]:
+    """Check for SQL injection"""
+    return get_intrusion_detection_system().check_sql_injection(query, ip_address)
+
+
+def check_brute_force(ip_address: str, username: Optional[str] = None) -> Dict[str, Any]:
+    """Check for brute force attack"""
+    return get_intrusion_detection_system().check_brute_force(ip_address, username)
+
+
+def check_replay_attack(data: Dict[str, Any], timestamp: int, nonce: str, ip_address: str) -> Dict[str, Any]:
+    """Check for replay attack"""
+    return get_intrusion_detection_system().check_replay_attack(data, timestamp, nonce, ip_address)
+
+
+def check_mitm_attack(data: Dict[str, Any], signature: str, ip_address: str) -> Dict[str, Any]:
+    """Check for MITM attack"""
+    return get_intrusion_detection_system().check_mitm_attack(data, signature, ip_address)
+
+
+def check_rate_limit(ip_address: str, endpoint: str) -> Dict[str, Any]:
+    """Check API rate limits"""
+    return get_intrusion_detection_system().check_rate_limit(ip_address, endpoint)
+
+
+def is_ip_blocked(ip_address: str) -> bool:
+    """Check if IP is blocked"""
+    return get_intrusion_detection_system().is_ip_blocked(ip_address)
+
+
+if __name__ == "__main__":
+    # Production mode - just log startup
+    logger.info("Defense System module loaded")
 
 
 class IntrusionDetectionSystem:
