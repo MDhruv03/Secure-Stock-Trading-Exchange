@@ -379,7 +379,7 @@ class SecureTradingApp {
             const result = await apiClient.createOrder(symbol, side, quantity, price);
             
             if (result.success) {
-                this.toast.show(`✅ Order placed: ${side.toUpperCase()} ${quantity} ${symbol} @ $${price}`, 'success');
+                this.toast.show(`✅ Order placed: ${side.toUpperCase()} ${quantity} ${symbol} @ ₹${price}`, 'success');
                 
                 // Refresh order book for this symbol
                 await this.updateOrderBook(symbol);

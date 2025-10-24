@@ -241,8 +241,8 @@ export const numberUtils = {
     
     // Format currency
     formatCurrency: (num, decimals = 2) => {
-        if (num === null || num === undefined) return '$0.00';
-        return '$' + Number(num).toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        if (num === null || num === undefined) return '₹0.00';
+        return '₹' + Number(num).toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     },
     
     // Format percentage
