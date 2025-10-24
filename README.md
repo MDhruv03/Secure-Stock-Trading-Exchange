@@ -1,9 +1,4 @@
 # Secure Trading Platform - Information Security Laboratory
-
-[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.68.0%2B-green)](https://fastapi.tiangolo.com/)
-[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-
 A production-ready secure trading platform designed for information security laboratory use, featuring advanced cryptographic security and comprehensive red vs blue team simulations.
 
 ## 🎯 Project Overview
@@ -15,8 +10,11 @@ The Secure Trading Platform is a comprehensive educational tool that demonstrate
 ### Cryptographic Protection
 - **AES-256-GCM Encryption**: All sensitive data encrypted at rest
 - **RSA-2048 Digital Signatures**: Ensures data authenticity and integrity
-- **Merkle Tree Verification**: Immutable audit trail for transactions
+- **Merkle Tree Verification**: Immutable audit trail with interactive visualization
+- **Merkle Proof Generation**: Zero-knowledge proof verification for transactions
 - **Homomorphic Encryption**: Privacy-preserving analytics (Paillier-based)
+- **ECC Key Exchange**: Elliptic Curve Diffie-Hellman for secure sessions
+- **HMAC Authentication**: Message authentication codes for integrity
 
 ### Intrusion Detection & Prevention
 - **SQL Injection Detection**: Pattern matching against malicious payloads
@@ -36,8 +34,10 @@ The Secure Trading Platform is a comprehensive educational tool that demonstrate
 Students observe and analyze:
 - AES-256-GCM encryption of order data
 - RSA digital signatures for authenticity
-- Merkle tree verification process
+- **Interactive Merkle tree visualization** with full tree structure
+- **Merkle proof generation and verification** for transaction validation
 - Homomorphic encryption for secure analytics
+- Real-time cryptographic operations in the Crypto Center
 
 ### Exercise 2: Security Monitoring & Alerting
 Students learn to:
@@ -70,8 +70,9 @@ Students implement and test:
 
 ### Frontend Stack
 - **Template Engine**: Jinja2 with Tailwind CSS
-- **Design**: Terminal-style interface with JetBeans Mono font
+- **Design**: Terminal-style interface with JetBrains Mono font
 - **Real-time**: WebSocket connections for live updates
+- **Visualizations**: Interactive Merkle tree diagrams, proof verification displays
 - **Responsive**: Works on desktop and mobile devices
 
 ### Security Stack
@@ -135,11 +136,6 @@ print('Database initialized successfully!')
 python backend/app/main.py
 ```
 
-### Access the Application
-Open your web browser and navigate to:
-```
-http://localhost:8000
-```
 
 ## 🛠️ Laboratory Setup
 
@@ -182,12 +178,17 @@ Key endpoints include:
 - `/api/trading/orders` - Secure order placement
 - `/api/security/events` - Security event retrieval
 - `/api/security/simulate/*` - Attack simulation endpoints
+- `/api/crypto/merkle/build_tree` - Interactive Merkle tree generation
+- `/api/crypto/merkle/generate_proof` - Cryptographic proof generation
+- `/api/crypto/merkle/verify_proof` - Proof verification
 
 ## 🔍 Security Features Demonstrated
 
 ### Data Protection
 - Encryption at rest using AES-256-GCM
 - Data integrity through RSA digital signatures
+- **Interactive Merkle tree visualization** for audit trail transparency
+- **Zero-knowledge proof verification** for transaction validation
 - Immutable audit trails with Merkle tree verification
 - Privacy-preserving analytics with homomorphic encryption
 
@@ -202,42 +203,3 @@ Key endpoints include:
 - Real-time session termination for suspicious activities
 - Comprehensive incident logging with severity ranking
 - Escalation procedures for high-severity events
-
-## 🎓 Educational Value
-
-This project provides students with hands-on experience in:
-
-1. **Cryptography Implementation**: Real-world application of encryption and digital signatures
-2. **Security Architecture**: Defense-in-depth approach to system design
-3. **Attack/Defense Techniques**: Practical experience with common security threats
-4. **Incident Response**: Hands-on experience with security event handling
-5. **Compliance Awareness**: Understanding of regulatory requirements
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- [FastAPI](https://fastapi.tiangolo.com/) for the excellent web framework
-- [Cryptography](https://cryptography.io/) for the robust cryptographic library
-- [Tailwind CSS](https://tailwindcss.com/) for the beautiful styling
-- All contributors who helped make this project possible
-
-## 📞 Support
-
-For support, please open an issue on the GitHub repository or contact the development team.
-
----
-
-**Note**: This platform is designed for educational purposes in a laboratory environment. It should not be used in production without proper security review and hardening.

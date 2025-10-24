@@ -17,6 +17,8 @@ The Secure Stock Trading Platform is a comprehensive, educational, and productio
 - **AES-256-GCM**: Authenticated encryption for data protection
 - **RSA-2048**: Digital signatures for authenticity and non-repudiation
 - **Merkle Trees**: Immutable audit trails with SHA-256 hashing
+- **Merkle Proof System**: Zero-knowledge proof generation and verification
+- **Interactive Visualization**: Real-time Merkle tree structure display
 - **Homomorphic Encryption**: Privacy-preserving computations (Paillier-based)
 - **ECDH Key Exchange**: Secure Diffie-Hellman for session establishment
 - **HMAC**: Message authentication for integrity verification
@@ -24,9 +26,10 @@ The Secure Stock Trading Platform is a comprehensive, educational, and productio
 ### Real-time Trading
 - Secure order placement and execution
 - Real-time market data feeds
-- Portfolio management
+- Enhanced portfolio management with live pricing
 - VWAP calculation
-- Order book visualization
+- Interactive order book visualization with symbol selector
+- Auto-sync between trading form and order book
 
 ### Security Monitoring
 - Real-time threat detection
@@ -55,6 +58,7 @@ The Secure Stock Trading Platform is a comprehensive, educational, and productio
 - **Template Engine**: Jinja2
 - **Styling**: Tailwind CSS with terminal-inspired design
 - **Real-time Updates**: WebSocket connections
+- **Cryptographic Visualizations**: Interactive Merkle tree diagrams with proof generation
 - **Responsive Design**: Mobile and desktop optimized
 
 ### Security Stack
@@ -88,8 +92,11 @@ The Secure Stock Trading Platform is a comprehensive, educational, and productio
 Students analyze and understand:
 - AES-256-GCM encryption implementation
 - RSA digital signature workflows
-- Merkle tree verification processes
+- **Interactive Merkle tree visualization** with hierarchical structure
+- **Merkle proof generation** with step-by-step verification
+- **Zero-knowledge proof validation** for transaction integrity
 - Homomorphic encryption applications
+- Real-time cryptographic operations in Crypto Center
 
 ### Exercise 2: Security Monitoring
 Students learn to:
@@ -132,6 +139,7 @@ Students implement:
 - **Template Engine**: Jinja2 for server-side rendering
 - **Styling**: Tailwind CSS with custom components
 - **Real-time**: WebSocket for live updates
+- **Visualizations**: Interactive Merkle tree canvas with color-coded nodes
 - **Design**: Terminal-inspired interface with security focus
 
 ### Security Infrastructure
@@ -169,4 +177,10 @@ Students implement:
 - Security audit procedures
 
 ## Conclusion
-The Secure Stock Trading Platform represents a comprehensive approach to combining financial trading functionality with advanced security implementations. It serves as both a practical trading system and an educational tool for developing security skills in a realistic environment. The platform demonstrates that security and functionality can coexist effectively while providing valuable hands-on experience for both offensive and defensive security operations.
+The Secure Stock Trading Platform represents a comprehensive approach to combining financial trading functionality with advanced security implementations. It serves as both a practical trading system and an educational tool for developing security skills in a realistic environment. 
+
+**Recent Enhancements:**
+- **Interactive Merkle Tree Visualization**: Full hierarchical tree structure with color-coded nodes (root, intermediate, leaves)
+- **Cryptographic Proof System**: Generate and verify Merkle proofs with visual proof path display
+- **Enhanced Portfolio Management**: Live pricing, 24h change tracking, and total value calculations
+- **Improved Order Book UI**: Symbol selector, spread indicators, and market statistics

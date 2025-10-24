@@ -539,10 +539,12 @@ class SecureTradingApp {
     async loadUserData() {
         try {
             const userId = localStorage.getItem('user_id');
+            const username = localStorage.getItem('username');
+            
             if (userId) {
                 this.userId = userId;
                 if (this.elements.currentUsername) {
-                    this.elements.currentUsername.textContent = `User${userId}`;
+                    this.elements.currentUsername.textContent = username || `User${userId}`;
                 }
                 if (this.elements.currentUserRole) {
                     this.elements.currentUserRole.textContent = 'trader';
