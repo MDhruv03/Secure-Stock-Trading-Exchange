@@ -3,6 +3,7 @@ Order Matching Engine for the Secure Trading Platform
 Implements price-time priority matching algorithm (FIFO)
 Prevents self-trading (same user cannot trade with themselves)
 """
+import json
 import time
 import logging
 from datetime import datetime
@@ -177,7 +178,6 @@ class OrderMatchingEngine:
             seller_merkle = self.crypto.create_merkle_leaf(seller_transaction)
             
             # Convert encrypted dicts to JSON strings for database storage
-            import json
             buyer_encrypted_str = json.dumps(buyer_encrypted)
             seller_encrypted_str = json.dumps(seller_encrypted)
             
@@ -331,27 +331,27 @@ def get_matching_engine() -> OrderMatchingEngine:
 if __name__ == "__main__":
     # Test the matching engine
     engine = get_matching_engine()
-    print("=== Order Matching Engine Test ===")
+    logger.info("=== Order Matching Engine Test ===")
     
     # Get statistics
     stats = engine.get_matching_statistics()
-    print(f"\nMatching Statistics:")
-    print(f"  Pending Orders: {stats['pending_orders']}")
-    print(f"  Filled Orders: {stats['filled_orders']}")
-    print(f"  Total Transactions: {stats['total_transactions']}")
-    print(f"  Symbols with Pending Orders: {stats['symbols_with_pending']}")
+    logger.info(f"\nMatching Statistics:")
+    logger.info(f"  Pending Orders: {stats['pending_orders']}")
+    logger.info(f"  Filled Orders: {stats['filled_orders']}")
+    logger.info(f"  Total Transactions: {stats['total_transactions']}")
+    logger.info(f"  Symbols with Pending Orders: {stats['symbols_with_pending']}")
     
     # Try to match all symbols
-    print("\nAttempting to match all symbols...")
+    logger.info("\nAttempting to match all symbols...")
     results = engine.match_all_symbols()
     
     if results:
-        print(f"\nMatched {len(results)} symbols:")
+        logger.info(f"\nMatched {len(results)} symbols:")
         for symbol, executions in results.items():
-            print(f"\n{symbol}:")
+            logger.info(f"\n{symbol}:")
             for execution in executions:
-                print(f"  - {execution['quantity']} @ {execution['price']} = {execution['total_value']}")
+                logger.info(f"  - {execution['quantity']} @ {execution['price']} = {execution['total_value']}")
     else:
-        print("\nNo matches found")
+        logger.info("\nNo matches found")
     
-    print("\n=== Test Complete ===")
+    logger.info("\n=== Test Complete ===")

@@ -1,10 +1,13 @@
 import random
 import time
+import logging
 from datetime import datetime, timedelta
 from backend.app.utils.database import get_db_manager
 from backend.app.services.auth_service import get_auth_service
 from backend.app.services.crypto_service import get_crypto_service
 from backend.app.services.trading_service import get_trading_service
+
+logger = logging.getLogger(__name__)
 
 class DataGenerator:
     def __init__(self):
@@ -22,16 +25,16 @@ class DataGenerator:
     
     def generate_sample_users(self, count=10):
         """Generate sample users"""
-        print("Generating sample users...")
+        logger.info("Generating sample users...")
         for i in range(count):
             username = f"trader{i+1}"
             password = f"pass{i+1}"
             self.auth.register_user(username, password)
-            print(f"Created user: {username}")
+            logger.info(f"Created user: {username}")
     
     def generate_sample_orders(self, count=50):
         """Generate sample orders"""
-        print("Generating sample orders...")
+        logger.info("Generating sample orders...")
         users = self.db.get_all_users()
         
         for _ in range(count):
@@ -49,21 +52,21 @@ class DataGenerator:
                 price=price
             )
             
-            print(f"Created order: {side} {quantity} {symbol} @ ${price} for user {user['id']}")
+            logger.info(f"Created order: {side} {quantity} {symbol} @ ${price} for user {user['id']}")
     
     def generate_sample_transactions(self, count=30):
         """Generate sample transactions"""
-        print("Generating sample transactions...")
+        logger.info("Generating sample transactions...")
         orders = self.db.get_all_orders()
         
         for order in orders[:count]:
             result = self.trading.execute_order(order["id"])
             if result["success"]:
-                print(f"Executed order {order['id']}")
+                logger.info(f"Executed order {order['id']}")
     
     def generate_security_events(self, count=100):
         """Generate sample security events"""
-        print("Generating security events...")
+        logger.info("Generating security events...")
         for _ in range(count):
             event_type = random.choice(self.event_types)
             description = f"Sample security event: {event_type}"
@@ -78,11 +81,11 @@ class DataGenerator:
                 details={"sample": "data"}
             )
             
-            print(f"Created security event: {event_type} ({severity})")
+            logger.info(f"Created security event: {event_type} ({severity})")
     
     def generate_attack_simulations(self, count=20):
         """Generate sample attack simulations"""
-        print("Generating attack simulations...")
+        logger.info("Generating attack simulations...")
         for _ in range(count):
             attack_type = random.choice(self.attack_types)
             description = f"Simulated {attack_type} attack"
@@ -101,11 +104,11 @@ class DataGenerator:
                 
                 # End simulation
                 self.db.end_attack_simulation(sim_id, "Simulation completed with automated defenses")
-                print(f"Created attack simulation: {attack_type}")
+                logger.info(f"Created attack simulation: {attack_type}")
     
     def generate_market_data(self):
         """Generate and update market data"""
-        print("Generating market data...")
+        logger.info("Generating market data...")
         for symbol in self.symbols:
             base_price = random.uniform(100, 50000)
             for _ in range(24):  # 24 hours of data
@@ -119,18 +122,18 @@ class DataGenerator:
                     volume=volume,
                     timestamp=datetime.now() - timedelta(hours=_)
                 )
-            print(f"Created market data for {symbol}")
+                logger.info(f"Created market data for {symbol}")
     
     def generate_all_sample_data(self):
         """Generate all types of sample data"""
-        print("Starting sample data generation...")
+        logger.info("Starting sample data generation...")
         self.generate_sample_users()
         self.generate_sample_orders()
         self.generate_sample_transactions()
         self.generate_security_events()
         self.generate_attack_simulations()
         self.generate_market_data()
-        print("Sample data generation completed!")
+        logger.info("Sample data generation completed!")
 
 def generate_sample_data():
     """Helper function to generate all sample data"""

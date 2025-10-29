@@ -5,6 +5,7 @@ import bcrypt
 import jwt
 import time
 import secrets
+import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from backend.app.utils.database import get_db_manager
@@ -18,6 +19,8 @@ from backend.app.config import (
     MAX_LOGIN_ATTEMPTS, 
     BLOCK_DURATION_HOURS
 )
+
+logger = logging.getLogger(__name__)
 
 class AuthService:
     """
@@ -229,15 +232,19 @@ class AuthService:
         Logout user and invalidate session
         """
         try:
+            # Get username for logging
+            user = self.db.get_user_by_id(user_id)
+            username = user.get("username", f"UserID-{user_id}") if user else f"UserID-{user_id}"
+            
             # Invalidate the session in database
             success = self.db.invalidate_session(session_token)
             
             if success:
                 self.db.log_security_event(
                     "USER_LOGOUT",
-                    f"User logged out: {user_id}",
+                    f"User logged out: {username}",
                     severity="INFO",
-                    details={"user_id": user_id}
+                    details={"user_id": user_id, "username": username}
                 )
             
             return success
@@ -336,15 +343,15 @@ def demo_auth_operations():
     
     # Try to login with correct credentials
     result = auth.authenticate_user("demo_user", "secure_password_123", "192.168.1.100")
-    print(f"   Login with correct password: {result['message']}")
+    logger.info(f"   Login with correct password: {result['message']}")
     if result['success']:
-        print(f"   Token: {result['token'][:20]}...")
+        logger.info(f"   Token: {result['token'][:20]}...")
     
     # Try to login with incorrect credentials
     result = auth.authenticate_user("demo_user", "wrong_password", "192.168.1.100")
-    print(f"   Login with wrong password: {result['message']}")
+    logger.info(f"   Login with wrong password: {result['message']}")
     
-    print("\n3. Simulating Failed Login Attempts:")
+    logger.info("\n3. Simulating Failed Login Attempts:")
     
     # Simulate multiple failed login attempts to trigger account lock
     for i in range(5):

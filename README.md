@@ -1,20 +1,71 @@
-# Secure Trading Platform - Information Security Laboratory
-A production-ready secure trading platform designed for information security laboratory use, featuring advanced cryptographic security and comprehensive red vs blue team simulations.
+# Secure Stock Trading Exchange
+
+A production-ready secure trading platform featuring enterprise-grade cryptographic security, real-time order matching, and comprehensive red vs blue team attack simulations.
+
+## 🚀 Quick Start
+
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Start the application
+python start_app.py
+
+# 3. Access the platform
+# Open http://localhost:8001 in your browser
+```
+
+**Default Credentials:**
+- Username: `admin` / Password: `admin123`
+- Or register a new account
 
 ## 🎯 Project Overview
 
-The Secure Trading Platform is a comprehensive educational tool that demonstrates enterprise-grade security implementations in a financial trading environment. Students gain hands-on experience with both offensive (red team) and defensive (blue team) security techniques.
+A full-stack financial trading platform demonstrating advanced security implementations including:
+- **Real-time order matching** with price-time priority (FIFO) algorithm
+- **End-to-end encryption** for all sensitive data
+- **User privacy controls** - users can only see their own orders
+- **Public order book** for transparent market depth
+- **Attack simulation lab** for security education and testing
 
 ## 🔐 Key Security Features
 
-### Cryptographic Protection
-- **AES-256-GCM Encryption**: All sensitive data encrypted at rest
-- **RSA-2048 Digital Signatures**: Ensures data authenticity and integrity
-- **Merkle Tree Verification**: Immutable audit trail with interactive visualization
-- **Merkle Proof Generation**: Zero-knowledge proof verification for transactions
-- **Homomorphic Encryption**: Privacy-preserving analytics (Paillier-based)
-- **ECC Key Exchange**: Elliptic Curve Diffie-Hellman for secure sessions
-- **HMAC Authentication**: Message authentication codes for integrity
+### Cryptographic Techniques Implemented
+
+#### 1. **AES-256-GCM** (Symmetric Encryption)
+- **Where Used:** Encrypting sensitive database fields, transaction details, session data
+- **Benefits:** High-speed, authenticated encryption (integrity + privacy)
+- **Purpose:** Prevents unauthorized data access and tampering
+
+#### 2. **RSA-2048** (Asymmetric Encryption)
+- **Where Used:** Digital signatures for transactions, key exchange
+- **Benefits:** Secure communication over untrusted networks, non-repudiation
+- **Purpose:** Ensures only intended parties can decrypt sensitive information
+
+#### 3. **ECC (SECP256R1)** (Elliptic Curve Cryptography)
+- **Where Used:** Digital signatures for API requests and critical operations
+- **Benefits:** Strong security with smaller key sizes, efficient for web clients
+- **Purpose:** Guarantees authenticity of trades and actions
+
+#### 4. **HMAC** (Hash-based Message Authentication Code)
+- **Where Used:** API request authentication, message integrity checks
+- **Benefits:** Fast, robust against forgery
+- **Purpose:** Ensures messages are not altered in transit
+
+#### 5. **PBKDF2-HMAC** (Password Hashing)
+- **Where Used:** User password storage with 100,000 iterations
+- **Benefits:** Resistant to brute-force and rainbow table attacks
+- **Purpose:** Protects user credentials even if database is compromised
+
+#### 6. **Merkle Tree** (Data Integrity & Proofs)
+- **Where Used:** Transaction history verification, audit logs, interactive visualization
+- **Benefits:** Efficient integrity verification, zero-knowledge proofs
+- **Purpose:** Detects tampering, provides cryptographic audit trails
+
+#### 7. **SHA-256/SHA-512** (Hashing)
+- **Where Used:** Transaction hashing, Merkle tree nodes, data integrity
+- **Benefits:** Collision-resistant, fast computation
+- **Purpose:** Ensures data integrity and supports cryptographic proofs
 
 ### Intrusion Detection & Prevention
 - **SQL Injection Detection**: Pattern matching against malicious payloads

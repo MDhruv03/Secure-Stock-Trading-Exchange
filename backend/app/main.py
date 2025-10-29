@@ -51,8 +51,6 @@ app.add_exception_handler(500, internal_error_handler)
 app.add_exception_handler(403, forbidden_handler)
 app.add_exception_handler(429, rate_limit_handler)
 
-from fastapi import Request
-
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
     """Serve the main application page"""
@@ -81,9 +79,9 @@ async def serve_spa(full_path: str):
 
 if __name__ == "__main__":
     import uvicorn
-    print("Starting Secure Trading Platform...")
-    print("Access the application at: http://localhost:8000")
-    print("Press Ctrl+C to stop the server")
+    logger.info("Starting Secure Trading Platform...")
+    logger.info("Access the application at: http://localhost:8000")
+    logger.info("Press Ctrl+C to stop the server")
     uvicorn.run(
         "backend.app.main:app",
         host="127.0.0.1",

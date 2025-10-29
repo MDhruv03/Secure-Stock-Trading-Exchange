@@ -137,18 +137,13 @@ async def logout_user(request: Request, authorization: str = Header(None)):
     auth_service = get_auth_service()
     # Look up session in DB to get user_id
     db = auth_service.db
-    print(f"[DEBUG] Logout requested. Session token: {session_token}")
     session = db.get_session(session_token)
-    print(f"[DEBUG] Session lookup result: {session}")
     if session and session.get("user_id"):
         user_id = session["user_id"]
         result = auth_service.logout_user(user_id, session_token)
         if not result:
-            print("[DEBUG] Logout failed during session invalidation.")
             # Still return success for idempotency
-    else:
-        print("[DEBUG] Invalid or expired session. Returning success for idempotency.")
-    print(f"[DEBUG] Logout endpoint returning success.")
+            pass
     return {"success": True, "message": "Logged out successfully"}
 
 @router.post("/api/auth/change-password")
@@ -198,8 +193,12 @@ async def get_user_orders(current_user: dict = Depends(get_current_user)):
     return {"orders": orders}
 
 @router.get("/api/trading/orders/all")
-async def get_all_orders():
-    """Get all orders (admin view)"""
+async def get_all_orders(current_user: dict = Depends(get_current_user)):
+    """Get all orders (admin view only)"""
+    # Restrict to admin users only
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Access denied. Admin privileges required.")
+    
     trading_service = get_trading_service()
     orders = trading_service.get_all_orders()
     
@@ -529,10 +528,11 @@ async def simulate_mitm(request: Request):
 # Real-Time Data Endpoints
 ## =========================
 @router.get("/api/data/orders/latest")
-async def get_latest_orders(limit: int = 10):
-    """Get latest orders for real-time updates"""
+async def get_latest_orders(limit: int = 10, current_user: dict = Depends(get_current_user)):
+    """Get latest orders for the current user only"""
     trading_service = get_trading_service()
-    orders = trading_service.get_all_orders()
+    # Get only the current user's orders
+    orders = trading_service.get_user_orders(current_user["id"])
     
     # Return only the latest orders
     latest_orders = orders[:limit] if len(orders) > limit else orders
@@ -631,10 +631,14 @@ async def get_user_activity_logs():
     return {"logs": user_activity}
 
 @router.get("/api/orders/user/{user_id}")
-async def get_user_orders_api(user_id: int):  # Removed current_user dependency for demo
-    """Get orders for a specific user"""
-    # For demo purposes, we'll return orders for the requested user_id
-    # In a real system, we would have proper authorization checks
+async def get_user_orders_api(user_id: int, current_user: dict = Depends(get_current_user)):
+    """Get orders for a specific user (requires authentication and authorization)"""
+    # Users can only see their own orders, unless they're admin
+    if current_user["id"] != user_id and current_user.get("role") != "admin":
+        raise HTTPException(
+            status_code=403, 
+            detail="Access denied. You can only view your own orders."
+        )
     
     trading_service = get_trading_service()
     orders = trading_service.get_user_orders(user_id)
@@ -642,8 +646,12 @@ async def get_user_orders_api(user_id: int):  # Removed current_user dependency 
     return {"orders": orders}
 
 @router.get("/api/orders/all")
-async def get_all_orders_api():
-    """Get all orders (admin view) - returns all orders for demo"""
+async def get_all_orders_api(current_user: dict = Depends(get_current_user)):
+    """Get all orders (admin only) - restricted endpoint"""
+    # Restrict to admin users only
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Access denied. Admin privileges required.")
+    
     trading_service = get_trading_service()
     orders = trading_service.get_all_orders()
     

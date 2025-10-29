@@ -150,11 +150,6 @@ class ApiClient {
         return data;
     }
 
-    async getAllOrders() {
-        const data = await this.request('/api/trading/orders/all');
-        return data;
-    }
-
     async getOrderBook(symbol) {
         const data = await this.request(`/api/trading/orderbook/${symbol}`);
         return data;
